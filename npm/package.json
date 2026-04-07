@@ -1,0 +1,48 @@
+{
+  "name": "@chapeaux/geoff",
+  "version": "0.1.0",
+  "description": "A semantically rich static site generator built on W3C web standards (RDF/SPARQL/SHACL)",
+  "main": "run.js",
+  "bin": {
+    "geoff": "./run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "keywords": [
+    "static-site-generator",
+    "ssg",
+    "rdf",
+    "sparql",
+    "shacl",
+    "semantic-web",
+    "linked-data",
+    "ontology",
+    "schema.org",
+    "knowledge-graph",
+    "jamstack",
+    "chapeaux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chapeaux/geoff.git"
+  },
+  "homepage": "https://github.com/chapeaux/geoff#readme",
+  "bugs": {
+    "url": "https://github.com/chapeaux/geoff/issues"
+  },
+  "author": "Chapeaux Contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

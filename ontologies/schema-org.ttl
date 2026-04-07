@@ -1,0 +1,166 @@
+@prefix schema: <https://schema.org/> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# Schema.org subset for web content publishing
+# Curated for Geoff — only terms relevant to static site generation
+# Based on schema.org release 28.0 (2025)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+schema:CreativeWork a rdfs:Class ;
+    rdfs:label "Creative Work" ;
+    rdfs:comment "The most generic kind of creative work, including books, movies, photographs, software programs, etc." ;
+    skos:altLabel "work" , "content" .
+
+schema:Article a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "Article" ;
+    rdfs:comment "An article, such as a news article or piece of investigative report." ;
+    skos:altLabel "news article" , "report" , "story" , "piece" .
+
+schema:BlogPosting a rdfs:Class ;
+    rdfs:subClassOf schema:Article ;
+    rdfs:label "Blog Post" ;
+    rdfs:comment "A blog post, typically published on a blog or similar platform." ;
+    skos:altLabel "blog entry" , "post" , "blog article" , "blog" .
+
+schema:WebPage a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "Web Page" ;
+    rdfs:comment "A web page, including both static pages and dynamically generated pages." ;
+    skos:altLabel "page" , "webpage" .
+
+schema:WebSite a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "Web Site" ;
+    rdfs:comment "A website, a set of related web pages served from a single domain." ;
+    skos:altLabel "site" , "website" .
+
+schema:HowTo a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "How-To Guide" ;
+    rdfs:comment "Instructions that explain how to achieve a result by performing a sequence of steps." ;
+    skos:altLabel "tutorial" , "guide" , "how to" , "instructions" , "walkthrough" , "recipe" .
+
+schema:FAQPage a rdfs:Class ;
+    rdfs:subClassOf schema:WebPage ;
+    rdfs:label "FAQ Page" ;
+    rdfs:comment "A page presenting one or more frequently asked questions with answers." ;
+    skos:altLabel "FAQ" , "frequently asked questions" .
+
+schema:Event a rdfs:Class ;
+    rdfs:label "Event" ;
+    rdfs:comment "An event happening at a certain time and location, such as a concert, lecture, or festival." ;
+    skos:altLabel "happening" , "occasion" , "meetup" , "conference" , "workshop" .
+
+schema:Person a rdfs:Class ;
+    rdfs:label "Person" ;
+    rdfs:comment "A person (alive, dead, undead, or fictional)." ;
+    skos:altLabel "individual" , "human" , "author" , "writer" , "contributor" , "user" .
+
+schema:Organization a rdfs:Class ;
+    rdfs:label "Organization" ;
+    rdfs:comment "An organization such as a school, NGO, corporation, club, etc." ;
+    skos:altLabel "org" , "company" , "institution" , "business" , "team" , "group" .
+
+schema:ImageObject a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "Image" ;
+    rdfs:comment "An image file." ;
+    skos:altLabel "photo" , "picture" .
+
+schema:VideoObject a rdfs:Class ;
+    rdfs:subClassOf schema:CreativeWork ;
+    rdfs:label "Video" ;
+    rdfs:comment "A video file." ;
+    skos:altLabel "clip" , "movie" .
+
+# ---------------------------------------------------------------------------
+# Properties
+# ---------------------------------------------------------------------------
+
+schema:name a rdf:Property ;
+    rdfs:label "Name" ;
+    rdfs:comment "The name of the item." ;
+    skos:altLabel "title" , "heading" , "label" ;
+    rdfs:range xsd:string .
+
+schema:headline a rdf:Property ;
+    rdfs:label "Headline" ;
+    rdfs:comment "Headline of the article or creative work." ;
+    skos:altLabel "title" , "heading" ;
+    rdfs:range xsd:string .
+
+schema:description a rdf:Property ;
+    rdfs:label "Description" ;
+    rdfs:comment "A description of the item." ;
+    skos:altLabel "summary" , "abstract" , "blurb" ;
+    rdfs:range xsd:string .
+
+schema:datePublished a rdf:Property ;
+    rdfs:label "Date Published" ;
+    rdfs:comment "Date of first publication." ;
+    skos:altLabel "published" , "publish date" , "date" , "published date" , "publication date" , "created" ;
+    rdfs:range xsd:date .
+
+schema:dateModified a rdf:Property ;
+    rdfs:label "Date Modified" ;
+    rdfs:comment "The date on which the item was most recently modified." ;
+    skos:altLabel "updated" , "last modified" , "modified date" ;
+    rdfs:range xsd:date .
+
+schema:author a rdf:Property ;
+    rdfs:label "Author" ;
+    rdfs:comment "The author of this creative work." ;
+    skos:altLabel "writer" , "by" , "written by" , "creator" , "contributor" , "authored by" ;
+    rdfs:range schema:Person .
+
+schema:about a rdf:Property ;
+    rdfs:label "About" ;
+    rdfs:comment "The subject matter of the content." ;
+    skos:altLabel "topic" , "subject" ;
+    rdfs:range rdfs:Resource .
+
+schema:keywords a rdf:Property ;
+    rdfs:label "Keywords" ;
+    rdfs:comment "Keywords or tags used to describe the content." ;
+    skos:altLabel "tags" , "labels" , "categories" , "topics" ;
+    rdfs:range xsd:string .
+
+schema:url a rdf:Property ;
+    rdfs:label "URL" ;
+    rdfs:comment "URL of the item." ;
+    skos:altLabel "link" , "web address" ;
+    rdfs:range xsd:anyURI .
+
+schema:image a rdf:Property ;
+    rdfs:label "Image" ;
+    rdfs:comment "An image of the item." ;
+    skos:altLabel "photo" , "picture" , "thumbnail" ;
+    rdfs:range xsd:anyURI .
+
+schema:inLanguage a rdf:Property ;
+    rdfs:label "Language" ;
+    rdfs:comment "The language of the content, expressed as an IETF BCP 47 language tag." ;
+    skos:altLabel "lang" , "locale" ;
+    rdfs:range xsd:string .
+
+schema:articleBody a rdf:Property ;
+    rdfs:label "Article Body" ;
+    rdfs:comment "The actual body of the article." ;
+    skos:altLabel "body" , "text" , "content" ;
+    rdfs:range xsd:string .
+
+schema:wordCount a rdf:Property ;
+    rdfs:label "Word Count" ;
+    rdfs:comment "The number of words in the text of the article." ;
+    skos:altLabel "words" , "length" ;
+    rdfs:range xsd:integer .

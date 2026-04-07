@@ -1,0 +1,48 @@
+# Geoff — Default Frontmatter Mappings
+#
+# This file maps human-readable frontmatter field names to ontology terms.
+# Geoff uses these mappings to convert TOML frontmatter into RDF triples.
+#
+# Format:
+#   field_name = "prefix:term"
+#
+# Supported prefixes (defined in ontologies/):
+#   schema:   — https://schema.org/
+#   dc:       — http://purl.org/dc/terms/
+#   foaf:     — http://xmlns.com/foaf/0.1/
+#   sioc:     — http://rdfs.org/sioc/ns#
+#   geoff:    — https://geoff.chapeaux.io/ontology#
+#   rdf:      — http://www.w3.org/1999/02/22-rdf-syntax-ns#
+#
+# You can add your own mappings here. When Geoff encounters a frontmatter
+# field it hasn't seen before, it will prompt you to choose a mapping and
+# save it here automatically.
+#
+# To override an auto-mapped field, just edit the value below.
+
+[mappings]
+title = "schema:name"
+date = "schema:datePublished"
+updated = "schema:dateModified"
+author = "schema:author"
+type = "rdf:type"
+about = "schema:about"
+language = "dc:language"
+tags = "schema:keywords"
+description = "schema:description"
+template = "geoff:usesTemplate"
+url = "schema:url"
+image = "schema:image"
+
+# Prefix declarations — maps short prefixes to full namespace IRIs.
+# These are used when resolving the mappings above and in [rdf] frontmatter.
+[prefixes]
+schema = "https://schema.org/"
+dc = "http://purl.org/dc/terms/"
+foaf = "http://xmlns.com/foaf/0.1/"
+sioc = "http://rdfs.org/sioc/ns#"
+geoff = "https://geoff.chapeaux.io/ontology#"
+rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+rdfs = "http://www.w3.org/2000/01/rdf-schema#"
+xsd = "http://www.w3.org/2001/XMLSchema#"
+skos = "http://www.w3.org/2004/02/skos/core#"

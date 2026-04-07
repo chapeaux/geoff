@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} | {{ config.title }}</title>
+  {% if description %}<meta name="description" content="{{ description }}">{% endif %}
+  {% if json_ld %}
+  <script type="application/ld+json">
+  {{ json_ld }}
+  </script>
+  {% endif %}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --text: #1a202c; --text-light: #4a5568; --bg: #fff; --bg-alt: #f7fafc;
+      --border: #e2e8f0; --primary: #3182ce; --max-w: 680px; --spacing: 1.5rem;
+      --sans: system-ui, -apple-system, sans-serif;
+      --serif: Georgia, Cambria, 'Times New Roman', serif;
+      --mono: 'Monaco', 'Menlo', monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #e2e8f0; --text-light: #a0aec0; --bg: #1a202c;
+        --bg-alt: #2d3748; --border: #4a5568; --primary: #63b3ed;
+      }
+    }
+    body { font-family: var(--serif); color: var(--text); background: var(--bg); line-height: 1.6; }
+    header { border-bottom: 1px solid var(--border); padding: var(--spacing) 0; }
+    header .wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--spacing); display: flex; justify-content: space-between; align-items: center; }
+    .site-title { font-family: var(--sans); font-size: 1.5rem; font-weight: 700; }
+    .site-title a { color: var(--text); text-decoration: none; }
+    nav ul { list-style: none; display: flex; gap: 1.5rem; font-family: var(--sans); font-size: 0.95rem; }
+    nav a { color: var(--text-light); text-decoration: none; }
+    nav a:hover { color: var(--primary); }
+    main { min-height: 60vh; padding: 3rem 0; }
+    .container { max-width: var(--max-w); margin: 0 auto; padding: 0 var(--spacing); }
+    footer { background: var(--bg-alt); border-top: 1px solid var(--border); padding: 2rem 0; margin-top: 4rem; font-family: var(--sans); font-size: 0.875rem; color: var(--text-light); }
+    footer .container { max-width: 1200px; }
+    h1, h2, h3, h4 { font-family: var(--sans); font-weight: 700; line-height: 1.3; margin: 2rem 0 1rem; }
+    h1 { font-size: 2.25rem; } h2 { font-size: 1.75rem; } h3 { font-size: 1.375rem; }
+    p { margin: 1rem 0; }
+    a { color: var(--primary); }
+    code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-alt); padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 4px; padding: 1.5rem; overflow-x: auto; margin: 2rem 0; }
+    pre code { background: transparent; padding: 0; }
+    ul, ol { padding-left: 2rem; }
+    li { margin: 0.5rem 0; }
+    blockquote { border-left: 4px solid var(--primary); padding-left: 1.5rem; margin: 2rem 0; font-style: italic; color: var(--text-light); }
+    img { max-width: 100%; height: auto; }
+    {% block extra_head %}{% endblock %}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h2 class="site-title"><a href="/">{{ config.title }}</a></h2>
+      <nav>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="/about.html">About</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <div class="container">
+      <p>Powered by <a href="https://github.com/chapeaux/geoff">Geoff</a></p>
+    </div>
+  </footer>
+</body>
+</html>

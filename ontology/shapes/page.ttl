@@ -1,0 +1,34 @@
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix schema: <https://schema.org/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix geoff:  <https://geoff.chapeaux.io/ontology#> .
+
+# =============================================================================
+# SHACL Shape: Page
+# Validates content typed as geoff:Page (any Geoff-managed page)
+# =============================================================================
+
+geoff:PageShape a sh:NodeShape ;
+    sh:targetClass geoff:Page ;
+    rdfs:label "Page" ;
+    rdfs:comment "Validates that every page has the minimum required metadata." ;
+
+    sh:property [
+        sh:path schema:name ;
+        sh:name "title" ;
+        sh:description "Every page must have exactly one title." ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+
+    sh:property [
+        sh:path geoff:usesTemplate ;
+        sh:name "template" ;
+        sh:description "Every page must specify exactly one template." ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:severity sh:Violation ;
+    ] .

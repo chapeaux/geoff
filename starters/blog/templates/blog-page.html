@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  .post-meta { font-family: var(--sans); font-size: 0.875rem; color: var(--text-light); margin-bottom: 2rem; }
+  .post-meta time { font-weight: 500; }
+  .post-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border); }
+  .tag { font-family: var(--sans); font-size: 0.875rem; background: var(--bg-alt); padding: 0.25rem 0.75rem; border-radius: 3px; text-decoration: none; color: var(--text); }
+{% endblock %}
+
+{% block content %}
+<article class="container">
+  <h1>{{ title }}</h1>
+  <div class="post-meta">
+    {% if date %}<time>{{ date }}</time>{% endif %}
+    {% if author %} &middot; {{ author }}{% endif %}
+  </div>
+  <div class="content">
+    {{ content }}
+  </div>
+  {% if tags %}
+  <div class="post-tags">
+    {% for tag in tags %}
+    <span class="tag">#{{ tag }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</article>
+{% endblock %}

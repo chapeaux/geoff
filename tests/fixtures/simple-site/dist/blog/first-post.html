@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Getting Started with Geoff — Test Site</title>
+    <meta name="description" content="A quick introduction to building sites with Geoff, the semantically rich static site generator.">
+    
+    <script type="application/ld+json">
+    {
+  "@context": "https://schema.org",
+  "@id": "https://example.com/blog/first-post",
+  "@type": "BlogPosting",
+  "author": {
+    "@type": "Person",
+    "name": "Jane Smith"
+  },
+  "datePublished": "{ \"$__toml_private_datetime\" = \"2026-04-10\" }",
+  "name": "Getting Started with Geoff"
+}
+    </script>
+    
+    
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/">Test Site</a>
+        </nav>
+    </header>
+    <main>
+        
+<article>
+    <header>
+        <h1>Getting Started with Geoff</h1>
+        <div class="meta">
+            <time datetime="{ "$__toml_private_datetime" = "2026-04-10" }">{ "$__toml_private_datetime" = "2026-04-10" }</time>
+            <span class="author">by Jane Smith</span>
+        </div>
+        
+        <ul class="tags">
+            <li>tutorial</li><li>getting-started</li>
+        </ul>
+        
+    </header>
+    <h1>Getting Started with Geoff</h1>
+<p>Geoff is a static site generator that makes linked data practical for everyday
+web publishing. You write plain Markdown with simple frontmatter, and Geoff
+handles the semantic web complexity behind the scenes.</p>
+<h2>Your First Site</h2>
+<p>Create a new site with <code>geoff init</code>:</p>
+<pre><code>$ geoff init my-site
+$ cd my-site
+$ geoff build
+</code></pre>
+<p>That's it. Your <code>dist/</code> directory now contains HTML pages with embedded JSON-LD
+structured data, ready for search engines and knowledge graphs.</p>
+<h2>Content Types</h2>
+<p>When you set <code>type = "Blog Post"</code> in your frontmatter, Geoff maps that to the
+correct schema.org type automatically. No IRIs, no prefixes, no RDF knowledge
+required.</p>
+
+</article>
+
+    </main>
+    <footer>
+        <p>Built with Geoff.</p>
+    </footer>
+</body>
+</html>

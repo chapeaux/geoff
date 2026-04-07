@@ -1,0 +1,60 @@
+# Geoff — Notice of Bundled Vocabulary Licenses
+
+Geoff is a semantically rich static site generator built on W3C web standards.
+
+## Project License
+
+**Geoff source code** is licensed under the MIT License.
+See the LICENSE file for the full text.
+
+---
+
+## Bundled Vocabulary Components
+
+Geoff includes curated subsets of the following open vocabularies, each with its own license:
+
+### 1. Schema.org (ontologies/schema-org.ttl)
+**License:** Creative Commons Attribution-ShareAlike 3.0 (CC BY-SA 3.0)
+**Source:** https://schema.org/ (Release 28.0, 2025)
+**Attribution:** "Portions of this work are based on schema.org, used under the Creative Commons Attribution-ShareAlike 3.0 License."
+
+The schema.org subset included in Geoff contains selected terms relevant to web content publishing (Article, BlogPosting, WebPage, WebSite, HowTo, etc.) with their definitions, comments, and human-readable labels.
+
+### 2. Dublin Core (ontologies/dublin-core.ttl)
+**License:** Creative Commons Attribution 4.0 International (CC BY 4.0)
+**Source:** https://www.dublincore.org/ (Dublin Core Metadata Initiative)
+**Attribution:** "Portions of this work are based on Dublin Core Metadata Terms, used under the Creative Commons Attribution 4.0 International License."
+
+### 3. FOAF — Friend of a Friend (ontologies/foaf.ttl)
+**License:** Creative Commons Attribution 1.0 (CC BY 1.0)
+**Source:** https://xmlns.com/foaf/spec/
+**Attribution:** "Portions of this work are based on the Friend of a Friend vocabulary, used under the Creative Commons Attribution 1.0 License."
+
+### 4. SIOC — Semantically Interlinked Online Communities (ontologies/sioc.ttl)
+**License:** Creative Commons Attribution (CC BY) + W3C Document License
+**Source:** http://sioc-project.org/
+**Attribution:** "Portions of this work are based on the SIOC Core Ontology, used under the Creative Commons Attribution License."
+
+---
+
+## License Compatibility
+
+The vocabularies bundled in Geoff retain their original licenses. When distributing Geoff:
+
+- **Geoff source code (MIT)** may be used, modified, and distributed under MIT terms
+- **Bundled vocabulary files** retain their original licenses (CC BY, CC BY-SA, W3C)
+  - You must provide attribution to the original vocabularies as noted above
+  - For schema.org (CC BY-SA 3.0), derivative works must also be shared under a compatible ShareAlike license
+
+Users of Geoff should be aware that if they modify and redistribute the bundled vocabulary files, they must comply with the original license terms.
+
+---
+
+## More Information
+
+- **MIT License:** See LICENSE file
+- **Creative Commons Licenses:** https://creativecommons.org/licenses/
+- **W3C Document License:** https://www.w3.org/Consortium/Legal/2015/copyright-software-and-document
+
+For questions about vocabulary licensing or attribution, please open an issue at:
+https://github.com/chapeaux/geoff/issues

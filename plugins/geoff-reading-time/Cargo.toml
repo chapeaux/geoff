@@ -1,0 +1,15 @@
+[package]
+name = "geoff-reading-time"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reading time calculator plugin for Geoff"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+geoff-plugin = { path = "../../crates/geoff-plugin" }
+async-trait = "0.1"
+serde_json = "1"

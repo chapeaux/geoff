@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} | {{ config.title }}</title>
+  {% if description %}<meta name="description" content="{{ description }}">{% endif %}
+  {% if json_ld %}
+  <script type="application/ld+json">
+  {{ json_ld }}
+  </script>
+  {% endif %}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --text: #1a202c; --text-light: #4a5568; --bg: #fff; --bg-alt: #f7fafc;
+      --border: #e2e8f0; --primary: #5a67d8; --sidebar-w: 250px; --spacing: 1.5rem;
+      --sans: system-ui, -apple-system, sans-serif;
+      --mono: 'Monaco', 'Menlo', monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #e2e8f0; --text-light: #a0aec0; --bg: #1a202c;
+        --bg-alt: #2d3748; --border: #4a5568; --primary: #7f9cf5;
+      }
+    }
+    body { font-family: var(--sans); color: var(--text); background: var(--bg); line-height: 1.6; }
+    header { border-bottom: 1px solid var(--border); padding: 1rem var(--spacing); display: flex; justify-content: space-between; align-items: center; }
+    .site-title { font-size: 1.25rem; font-weight: 700; }
+    .site-title a { color: var(--text); text-decoration: none; }
+    .layout { display: flex; min-height: calc(100vh - 60px); }
+    aside { width: var(--sidebar-w); border-right: 1px solid var(--border); padding: var(--spacing); background: var(--bg-alt); flex-shrink: 0; }
+    aside h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-light); margin-bottom: 0.75rem; }
+    aside ul { list-style: none; }
+    aside li { margin: 0.25rem 0; }
+    aside a { color: var(--text-light); text-decoration: none; font-size: 0.9rem; }
+    aside a:hover { color: var(--primary); }
+    .content-area { flex: 1; padding: 2rem var(--spacing); max-width: 800px; }
+    h1, h2, h3, h4 { font-weight: 700; line-height: 1.3; margin: 2rem 0 1rem; }
+    h1 { font-size: 2rem; } h2 { font-size: 1.5rem; } h3 { font-size: 1.25rem; }
+    p { margin: 1rem 0; }
+    a { color: var(--primary); }
+    code { font-family: var(--mono); font-size: 0.875em; background: var(--bg-alt); padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 4px; padding: 1rem; overflow-x: auto; margin: 1.5rem 0; }
+    pre code { background: transparent; padding: 0; }
+    ul, ol { padding-left: 2rem; margin: 1rem 0; }
+    li { margin: 0.5rem 0; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      aside { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+    {% block extra_head %}{% endblock %}
+  </style>
+</head>
+<body>
+  <header>
+    <span class="site-title"><a href="/">{{ config.title }}</a></span>
+  </header>
+  <div class="layout">
+    {% block sidebar %}{% endblock %}
+    <div class="content-area">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</body>
+</html>

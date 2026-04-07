@@ -1,0 +1,95 @@
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# Dublin Core Terms subset for web content publishing
+# Curated for Geoff — properties commonly used in content metadata
+# Based on DCMI Metadata Terms (ISO 15836)
+# =============================================================================
+
+dcterms:title a rdf:Property ;
+    rdfs:label "Title" ;
+    rdfs:comment "A name given to the resource." ;
+    skos:altLabel "name" , "heading" , "label" , "headline" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:creator a rdf:Property ;
+    rdfs:label "Creator" ;
+    rdfs:comment "An entity primarily responsible for making the resource." ;
+    skos:altLabel "author" , "writer" , "made by" , "contributor" , "by" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:subject a rdf:Property ;
+    rdfs:label "Subject" ;
+    rdfs:comment "The topic of the resource." ;
+    skos:altLabel "topic" , "theme" , "about" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:description a rdf:Property ;
+    rdfs:label "Description" ;
+    rdfs:comment "An account of the resource." ;
+    skos:altLabel "summary" , "abstract" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:publisher a rdf:Property ;
+    rdfs:label "Publisher" ;
+    rdfs:comment "An entity responsible for making the resource available." ;
+    skos:altLabel "published by" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:date a rdf:Property ;
+    rdfs:label "Date" ;
+    rdfs:comment "A point or period of time associated with an event in the lifecycle of the resource." ;
+    skos:altLabel "published" , "created" , "published date" , "publication date" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:type a rdf:Property ;
+    rdfs:label "Type" ;
+    rdfs:comment "The nature or genre of the resource." ;
+    skos:altLabel "kind" , "category" , "genre" ;
+    rdfs:range rdfs:Class .
+
+dcterms:format a rdf:Property ;
+    rdfs:label "Format" ;
+    rdfs:comment "The file format, physical medium, or dimensions of the resource." ;
+    skos:altLabel "media type" , "mime type" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:identifier a rdf:Property ;
+    rdfs:label "Identifier" ;
+    rdfs:comment "An unambiguous reference to the resource within a given context." ;
+    skos:altLabel "ID" , "slug" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:source a rdf:Property ;
+    rdfs:label "Source" ;
+    rdfs:comment "A related resource from which the described resource is derived." ;
+    skos:altLabel "origin" , "derived from" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:language a rdf:Property ;
+    rdfs:label "Language" ;
+    rdfs:comment "A language of the resource." ;
+    skos:altLabel "lang" , "locale" ;
+    rdfs:range rdfs:Literal .
+
+dcterms:relation a rdf:Property ;
+    rdfs:label "Relation" ;
+    rdfs:comment "A related resource." ;
+    skos:altLabel "related to" , "see also" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:coverage a rdf:Property ;
+    rdfs:label "Coverage" ;
+    rdfs:comment "The spatial or temporal topic of the resource." ;
+    skos:altLabel "scope" , "extent" ;
+    rdfs:range rdfs:Resource .
+
+dcterms:rights a rdf:Property ;
+    rdfs:label "Rights" ;
+    rdfs:comment "Information about rights held in and over the resource." ;
+    skos:altLabel "license" , "copyright" , "permissions" , "terms" ;
+    rdfs:range rdfs:Resource .

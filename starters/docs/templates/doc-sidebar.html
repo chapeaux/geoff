@@ -1,0 +1,9 @@
+<aside>
+  <h3>Documentation</h3>
+  {% set pages = sparql(query="SELECT ?title WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title . ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/TechArticle> } } ORDER BY ?title") %}
+  <ul>
+    {% for page in pages %}
+    <li><a href="#">{{ page.title }}</a></li>
+    {% endfor %}
+  </ul>
+</aside>

@@ -1,0 +1,88 @@
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# FOAF (Friend of a Friend) subset for web content publishing
+# Curated for Geoff — terms for describing people and their relationships
+# Based on FOAF Vocabulary Specification 0.99 (2014)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+foaf:Agent a rdfs:Class ;
+    rdfs:label "Agent" ;
+    rdfs:comment "An agent (a person, group, software, or other entity that can act)." ;
+    skos:altLabel "actor" , "entity" .
+
+foaf:Person a rdfs:Class ;
+    rdfs:subClassOf foaf:Agent ;
+    rdfs:label "Person" ;
+    rdfs:comment "A person." ;
+    skos:altLabel "individual" , "human" , "user" , "author" , "writer" , "contributor" , "member" .
+
+foaf:Organization a rdfs:Class ;
+    rdfs:subClassOf foaf:Agent ;
+    rdfs:label "Organization" ;
+    rdfs:comment "An organization." ;
+    skos:altLabel "org" , "company" , "group" .
+
+foaf:Group a rdfs:Class ;
+    rdfs:subClassOf foaf:Agent ;
+    rdfs:label "Group" ;
+    rdfs:comment "A collection of individual agents." ;
+    skos:altLabel "team" , "collective" .
+
+foaf:Document a rdfs:Class ;
+    rdfs:label "Document" ;
+    rdfs:comment "A document." ;
+    skos:altLabel "page" , "file" , "resource" .
+
+foaf:Image a rdfs:Class ;
+    rdfs:subClassOf foaf:Document ;
+    rdfs:label "Image" ;
+    rdfs:comment "An image." ;
+    skos:altLabel "photo" , "picture" .
+
+# ---------------------------------------------------------------------------
+# Properties
+# ---------------------------------------------------------------------------
+
+foaf:name a rdf:Property ;
+    rdfs:label "Name" ;
+    rdfs:comment "A name for some thing." ;
+    skos:altLabel "full name" , "display name" , "title" ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range xsd:string .
+
+foaf:mbox a rdf:Property ;
+    rdfs:label "Email" ;
+    rdfs:comment "A personal mailbox, i.e. an Internet mailbox associated with exactly one owner." ;
+    skos:altLabel "email" , "e-mail" , "mail" ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range rdfs:Resource .
+
+foaf:homepage a rdf:Property ;
+    rdfs:label "Homepage" ;
+    rdfs:comment "A homepage for some thing." ;
+    skos:altLabel "website" , "home page" , "web page" , "url" , "site" ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range foaf:Document .
+
+foaf:maker a rdf:Property ;
+    rdfs:label "Maker" ;
+    rdfs:comment "An agent that made this thing." ;
+    skos:altLabel "creator" , "made by" , "author" ;
+    rdfs:range foaf:Agent .
+
+foaf:knows a rdf:Property ;
+    rdfs:label "Knows" ;
+    rdfs:comment "A person known by this person (indicating some level of reciprocated interaction)." ;
+    skos:altLabel "contact" , "connection" ;
+    rdfs:domain foaf:Person ;
+    rdfs:range foaf:Person .

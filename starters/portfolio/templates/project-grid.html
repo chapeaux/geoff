@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+  .card { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--primary); }
+  .card h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+  .card h2 a { color: var(--text); text-decoration: none; }
+  .card p { color: var(--text-light); font-size: 0.9rem; margin: 0; }
+  .card-date { font-size: 0.8rem; color: var(--text-light); margin-top: 1rem; }
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>{{ title }}</h1>
+
+  {% set projects = sparql(query="SELECT ?title ?date ?desc WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title . ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/CreativeWork> . OPTIONAL { ?s <http://schema.org/datePublished> ?date } OPTIONAL { ?s <http://schema.org/description> ?desc } } } ORDER BY DESC(?date)") %}
+
+  {% if projects %}
+  <div class="grid">
+    {% for project in projects %}
+    <div class="card">
+      <h2><a href="#">{{ project.title }}</a></h2>
+      {% if project.desc %}<p>{{ project.desc }}</p>{% endif %}
+      {% if project.date %}<div class="card-date">{{ project.date }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No projects yet. Create one with <code>geoff new projects/my-project.md -t Project</code></p>
+  {% endif %}
+</div>
+{% endblock %}

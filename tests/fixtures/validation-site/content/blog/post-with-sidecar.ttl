@@ -1,0 +1,16 @@
+@prefix schema: <https://schema.org/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# Sidecar RDF for post-with-sidecar.md
+# These triples are merged into the page's named graph alongside
+# the triples generated from the TOML frontmatter.
+
+<urn:geoff:content:blog/post-with-sidecar>
+    schema:wordCount 142 ;
+    schema:inLanguage "en" ;
+    schema:isPartOf <urn:geoff:content:blog> ;
+    schema:citation [
+        a schema:CreativeWork ;
+        schema:name "Understanding Linked Data" ;
+        schema:url "https://www.w3.org/standards/semanticweb/data"^^xsd:anyURI
+    ] .

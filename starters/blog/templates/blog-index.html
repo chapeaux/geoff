@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  .post-list { list-style: none; padding: 0; }
+  .post-item { margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+  .post-item:last-child { border-bottom: none; }
+  .post-item h2 { margin: 0 0 0.5rem; font-size: 1.5rem; }
+  .post-item h2 a { color: var(--text); text-decoration: none; }
+  .post-item h2 a:hover { color: var(--primary); }
+  .post-item-meta { font-family: var(--sans); font-size: 0.875rem; color: var(--text-light); }
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>{{ title }}</h1>
+
+  {% set posts = sparql(query="SELECT ?title ?date ?author WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title . ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/BlogPosting> . OPTIONAL { ?s <http://schema.org/datePublished> ?date } OPTIONAL { ?s <http://schema.org/author> ?author } } } ORDER BY DESC(?date)") %}
+
+  {% if posts %}
+  <ul class="post-list">
+    {% for post in posts %}
+    <li class="post-item">
+      <h2><a href="#">{{ post.title }}</a></h2>
+      <div class="post-item-meta">
+        {% if post.date %}{{ post.date }}{% endif %}
+        {% if post.author %} &middot; {{ post.author }}{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No posts yet. Create one with <code>geoff new blog/my-post.md</code></p>
+  {% endif %}
+</div>
+{% endblock %}

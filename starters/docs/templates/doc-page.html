@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block sidebar %}
+{% include "doc-sidebar.html" %}
+{% endblock %}
+
+{% block content %}
+<article>
+  <h1>{{ title }}</h1>
+  {% if description %}<p style="color: var(--text-light); font-size: 1.1rem; margin-bottom: 2rem;">{{ description }}</p>{% endif %}
+  <div class="doc-content">
+    {{ content }}
+  </div>
+</article>
+{% endblock %}

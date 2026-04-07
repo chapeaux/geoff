@@ -1,0 +1,24 @@
+[package]
+name = "geoff-render"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Tera template rendering and JSON-LD output for Geoff"
+keywords = ["template", "rendering", "json-ld", "tera"]
+categories = ["template-engine"]
+
+[dependencies]
+geoff-core = { path = "../geoff-core" }
+geoff-graph = { path = "../geoff-graph" }
+geoff-content = { path = "../geoff-content" }
+geoff-ontology = { path = "../geoff-ontology" }
+tera = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+camino = "1"
+rayon = "1"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,11 @@
+[types]
+"Blog Post" = "http://schema.org/BlogPosting"
+"Article" = "http://schema.org/Article"
+"Web Page" = "http://schema.org/WebPage"
+
+[properties]
+title = "http://schema.org/name"
+author = "http://schema.org/author"
+date = "http://schema.org/datePublished"
+description = "http://schema.org/description"
+tags = "http://schema.org/keywords"

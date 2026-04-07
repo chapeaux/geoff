@@ -1,0 +1,97 @@
+@prefix geoff: <https://geoff.chapeaux.io/ontology#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix schema: <https://schema.org/> .
+
+# =============================================================================
+# Geoff Site-Structure Ontology
+# Namespace: https://geoff.chapeaux.io/ontology#
+# Defines site-level structure: sites, pages, sections, templates.
+# Content typing is delegated to schema.org and other vocabularies.
+# =============================================================================
+
+<https://geoff.chapeaux.io/ontology#> a owl:Ontology ;
+    rdfs:label "Geoff Ontology" ;
+    rdfs:comment "Site-structure vocabulary for the Geoff static site generator." ;
+    owl:versionInfo "0.1.0" .
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+geoff:Site a rdfs:Class ;
+    rdfs:label "Site" ;
+    rdfs:comment "A Geoff-managed website, representing the top-level container for all content." ;
+    skos:altLabel "website" , "project" .
+
+geoff:Page a rdfs:Class ;
+    rdfs:label "Page" ;
+    rdfs:comment "A single page of content, typically generated from a Markdown source file." ;
+    skos:altLabel "document" , "content page" .
+
+geoff:Section a rdfs:Class ;
+    rdfs:label "Section" ;
+    rdfs:comment "A logical grouping of pages, typically corresponding to a content directory." ;
+    skos:altLabel "category" , "folder" , "directory" .
+
+geoff:Collection a rdfs:Class ;
+    rdfs:label "Collection" ;
+    rdfs:comment "A curated or query-defined group of pages, such as a tag archive or series." ;
+    skos:altLabel "archive" , "listing" , "index" .
+
+geoff:Template a rdfs:Class ;
+    rdfs:label "Template" ;
+    rdfs:comment "A Tera template used to render pages into HTML." ;
+    skos:altLabel "layout" , "theme file" .
+
+geoff:ContentDirectory a rdfs:Class ;
+    rdfs:label "Content Directory" ;
+    rdfs:comment "A directory on disk containing source content files." ;
+    skos:altLabel "content folder" , "source directory" .
+
+# ---------------------------------------------------------------------------
+# Properties
+# ---------------------------------------------------------------------------
+
+geoff:hasPage a rdf:Property ;
+    rdfs:label "Has Page" ;
+    rdfs:comment "Links a site or section to a page it contains." ;
+    skos:altLabel "contains page" ;
+    rdfs:domain geoff:Site ;
+    rdfs:range geoff:Page .
+
+geoff:inSection a rdf:Property ;
+    rdfs:label "In Section" ;
+    rdfs:comment "The section this page belongs to." ;
+    skos:altLabel "belongs to section" , "section" ;
+    rdfs:domain geoff:Page ;
+    rdfs:range geoff:Section .
+
+geoff:usesTemplate a rdf:Property ;
+    rdfs:label "Uses Template" ;
+    rdfs:comment "The template used to render this page." ;
+    skos:altLabel "template" , "layout" ;
+    rdfs:domain geoff:Page ;
+    rdfs:range geoff:Template .
+
+geoff:sourcePath a rdf:Property ;
+    rdfs:label "Source Path" ;
+    rdfs:comment "The file system path to the source content file, relative to the content directory." ;
+    skos:altLabel "content path" , "file path" , "source" ;
+    rdfs:range xsd:string .
+
+geoff:outputPath a rdf:Property ;
+    rdfs:label "Output Path" ;
+    rdfs:comment "The file system path where the rendered output is written, relative to the output directory." ;
+    skos:altLabel "destination" , "target path" ;
+    rdfs:range xsd:string .
+
+geoff:buildDate a rdf:Property ;
+    rdfs:label "Build Date" ;
+    rdfs:comment "The date and time when the site was last built." ;
+    skos:altLabel "built at" , "last build" ;
+    rdfs:domain geoff:Site ;
+    rdfs:range xsd:dateTime .

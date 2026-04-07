@@ -1,0 +1,43 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix schema: <https://schema.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix geoff-shapes: <urn:geoff:shapes:> .
+
+# =============================================================================
+# SHACL shapes for Geoff blog content validation
+# These shapes define the expected structure of content types
+# =============================================================================
+
+# Every BlogPosting must have a name
+geoff-shapes:BlogPostingShape a sh:NodeShape ;
+    sh:targetClass schema:BlogPosting ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Every Blog Post must have exactly one title (schema:name)" ;
+    ] .
+
+# Every Article must have a name
+geoff-shapes:ArticleShape a sh:NodeShape ;
+    sh:targetClass schema:Article ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Every Article must have exactly one title (schema:name)" ;
+    ] .
+
+# Every WebPage must have a name
+geoff-shapes:WebPageShape a sh:NodeShape ;
+    sh:targetClass schema:WebPage ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Every Web Page must have exactly one title (schema:name)" ;
+    ] .

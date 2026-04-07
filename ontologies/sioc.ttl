@@ -1,0 +1,76 @@
+@prefix sioc:  <http://rdfs.org/sioc/ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# SIOC (Semantically-Interlinked Online Communities) subset
+# Curated for Geoff — terms for blog and forum content
+# Based on SIOC Core Ontology Specification (2010)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+sioc:Site a rdfs:Class ;
+    rdfs:label "Site" ;
+    rdfs:comment "A site is a web presence with a collection of content containers." ;
+    skos:altLabel "website" , "web site" .
+
+sioc:Forum a rdfs:Class ;
+    rdfs:label "Forum" ;
+    rdfs:comment "A discussion area on which posts or entries are made." ;
+    skos:altLabel "board" , "discussion" , "blog" , "channel" , "category" .
+
+sioc:Thread a rdfs:Class ;
+    rdfs:label "Thread" ;
+    rdfs:comment "A container for a series of related posts or messages." ;
+    skos:altLabel "discussion thread" , "conversation" .
+
+sioc:Post a rdfs:Class ;
+    rdfs:label "Post" ;
+    rdfs:comment "An article or message that can be posted to a forum." ;
+    skos:altLabel "entry" , "message" , "blog post" , "article" , "comment" .
+
+sioc:UserAccount a rdfs:Class ;
+    rdfs:label "User Account" ;
+    rdfs:comment "A user account on an online community site." ;
+    skos:altLabel "user" , "account" , "member" .
+
+# ---------------------------------------------------------------------------
+# Properties
+# ---------------------------------------------------------------------------
+
+sioc:content a rdf:Property ;
+    rdfs:label "Content" ;
+    rdfs:comment "The content of the post in plain text." ;
+    skos:altLabel "body" , "text" ;
+    rdfs:domain sioc:Post ;
+    rdfs:range xsd:string .
+
+sioc:has_creator a rdf:Property ;
+    rdfs:label "Has Creator" ;
+    rdfs:comment "The user who created this item." ;
+    skos:altLabel "author" , "posted by" , "creator" ;
+    rdfs:range sioc:UserAccount .
+
+sioc:has_container a rdf:Property ;
+    rdfs:label "Has Container" ;
+    rdfs:comment "The container (e.g. forum) of this item." ;
+    skos:altLabel "in forum" , "belongs to" , "posted in" ;
+    rdfs:range sioc:Forum .
+
+sioc:reply_of a rdf:Property ;
+    rdfs:label "Reply Of" ;
+    rdfs:comment "Links to an item that this item is a reply to." ;
+    skos:altLabel "in reply to" , "response to" ;
+    rdfs:domain sioc:Post ;
+    rdfs:range sioc:Post .
+
+sioc:topic a rdf:Property ;
+    rdfs:label "Topic" ;
+    rdfs:comment "A topic of the resource." ;
+    skos:altLabel "subject" , "about" , "tag" ;
+    rdfs:range rdfs:Resource .

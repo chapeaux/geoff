@@ -1,0 +1,5 @@
+base_url = "http://localhost:3000"
+title = "My Blog"
+content_dir = "content"
+output_dir = "dist"
+template_dir = "templates"
