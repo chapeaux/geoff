@@ -10,8 +10,8 @@ keywords = ["ontology", "rdf", "semantic-web", "vocabulary"]
 categories = ["data-structures"]
 
 [dependencies]
-geoff-core = { path = "../geoff-core" }
-geoff-graph = { path = "../geoff-graph" }
+geoff-core = { version = "0.1.0", path = "../geoff-core" }
+geoff-graph = { version = "0.1.0", path = "../geoff-graph" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 strsim = "0.11"

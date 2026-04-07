@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Core types, config, and error handling for Geoff static site generator"
-keywords = ["static-site-generator", "rdf", "semantic-web"]
+keywords = ["static-site", "rdf", "semantic-web"]
 categories = ["web-programming"]
 
 [dependencies]

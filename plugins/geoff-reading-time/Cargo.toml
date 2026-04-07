@@ -10,6 +10,6 @@ description = "Reading time calculator plugin for Geoff"
 crate-type = ["cdylib"]
 
 [dependencies]
-geoff-plugin = { path = "../../crates/geoff-plugin" }
+geoff-plugin = { version = "0.1.0", path = "../../crates/geoff-plugin" }
 async-trait = "0.1"
 serde_json = "1"

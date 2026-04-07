@@ -10,8 +10,8 @@ keywords = ["markdown", "frontmatter", "rdf", "parsing"]
 categories = ["parsing", "text-processing"]
 
 [dependencies]
-geoff-core = { path = "../geoff-core" }
-geoff-graph = { path = "../geoff-graph" }
+geoff-core = { version = "0.1.0", path = "../geoff-core" }
+geoff-graph = { version = "0.1.0", path = "../geoff-graph" }
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Semantically rich static site generator built on W3C web standards"
-keywords = ["static-site-generator", "rdf", "sparql", "semantic-web", "jamstack"]
+keywords = ["static-site", "rdf", "sparql", "semantic-web", "jamstack"]
 categories = ["web-programming", "template-engine", "command-line-utilities"]
 
 [[bin]]
@@ -14,14 +14,14 @@ name = "geoff"
 path = "src/main.rs"
 
 [dependencies]
-geoff-core = { path = "../geoff-core" }
-geoff-graph = { path = "../geoff-graph" }
-geoff-content = { path = "../geoff-content" }
-geoff-render = { path = "../geoff-render" }
-geoff-server = { path = "../geoff-server" }
-geoff-ontology = { path = "../geoff-ontology" }
-geoff-plugin = { path = "../geoff-plugin" }
-geoff-deno = { path = "../geoff-deno" }
+geoff-core = { version = "0.1.0", path = "../geoff-core" }
+geoff-graph = { version = "0.1.0", path = "../geoff-graph" }
+geoff-content = { version = "0.1.0", path = "../geoff-content" }
+geoff-render = { version = "0.1.0", path = "../geoff-render" }
+geoff-server = { version = "0.1.0", path = "../geoff-server" }
+geoff-ontology = { version = "0.1.0", path = "../geoff-ontology" }
+geoff-plugin = { version = "0.1.0", path = "../geoff-plugin" }
+geoff-deno = { version = "0.1.0", path = "../geoff-deno" }
 clap = { version = "4", features = ["derive"] }
 colored = "3"
 tokio = { version = "1", features = ["full"] }
