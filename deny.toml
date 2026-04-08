@@ -20,6 +20,7 @@ allow = [
     "Unicode-DFS-2016",
     "Zlib",
     "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
 exceptions = []
 
