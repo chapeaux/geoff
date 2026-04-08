@@ -4,8 +4,10 @@ pub struct PageUri(pub String);
 
 impl PageUri {
     /// Create a page URI from a content-relative path.
+    /// Normalizes backslashes to forward slashes for cross-platform consistency.
     pub fn from_path(path: &str) -> Self {
-        Self(format!("urn:geoff:content:{}", iri_escape(path)))
+        let normalized = path.replace('\\', "/");
+        Self(format!("urn:geoff:content:{}", iri_escape(&normalized)))
     }
 
     pub fn as_str(&self) -> &str {
@@ -61,6 +63,11 @@ pub enum ObjectValue {
 /// Well-known named graph IRIs.
 pub const GRAPH_ONTOLOGY: &str = "urn:geoff:ontology";
 pub const GRAPH_SITE: &str = "urn:geoff:site";
+
+/// Normalize a filesystem path to use forward slashes (for cross-platform consistency).
+pub fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
 
 /// Percent-encode characters that are invalid in IRIs.
 pub fn iri_escape(s: &str) -> String {

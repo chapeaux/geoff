@@ -66,7 +66,8 @@ async fn list_pages(State(state): State<Arc<DevState>>) -> impl IntoResponse {
         let rel_path = file_path
             .strip_prefix(&content_dir)
             .unwrap_or(file_path)
-            .to_string();
+            .to_string()
+            .replace('\\', "/");
 
         pages.push(PageMeta {
             path: rel_path,
@@ -222,7 +223,8 @@ async fn get_page_graph(
     State(state): State<Arc<DevState>>,
     Path(path): Path<String>,
 ) -> impl IntoResponse {
-    let graph_uri = format!("urn:geoff:content:{path}");
+    let normalized_path = path.replace('\\', "/");
+    let graph_uri = format!("urn:geoff:content:{normalized_path}");
     let query =
         format!("SELECT ?s ?p ?o WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }} ORDER BY ?s ?p");
     match state.store.query_to_json(&query) {
@@ -376,7 +378,8 @@ async fn validate_page(
     Path(path): Path<String>,
 ) -> impl IntoResponse {
     // Export only the page's named graph via SELECT, format as NTriples
-    let graph_uri = format!("urn:geoff:content:{path}");
+    let normalized_path = path.replace('\\', "/");
+    let graph_uri = format!("urn:geoff:content:{normalized_path}");
     let select_query = format!("SELECT ?s ?p ?o WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}");
     let triples = match state.store.query_to_json(&select_query) {
         Ok(t) => t,

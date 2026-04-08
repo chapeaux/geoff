@@ -7,7 +7,7 @@ use geoff_content::markdown::render_markdown;
 use geoff_content::scanner::{scan_content_dir, scan_data_dir, sidecar_ttl_path};
 use geoff_core::cache::{BuildCache, hash_file};
 use geoff_core::config::SiteConfig;
-use geoff_core::types::{ObjectValue, PageUri, xsd};
+use geoff_core::types::{ObjectValue, PageUri, normalize_path, xsd};
 use geoff_graph::store::ContentStore;
 use geoff_ontology::mappings::MappingRegistry;
 use rayon::prelude::*;
@@ -103,10 +103,12 @@ pub fn build_site_incremental(
             && let Some(c) = cache
             && let Ok(current_hash) = hash_file(file_path)
             && !c.is_changed(
-                file_path
-                    .strip_prefix(&content_dir)
-                    .unwrap_or(file_path)
-                    .as_str(),
+                &normalize_path(
+                    file_path
+                        .strip_prefix(&content_dir)
+                        .unwrap_or(file_path)
+                        .as_str(),
+                ),
                 &current_hash,
             )
         {
@@ -225,7 +227,7 @@ fn parse_and_ingest(
     });
 
     let rel_path = file_path.strip_prefix(content_dir).unwrap_or(file_path);
-    let output_name = rel_path.with_extension("html");
+    let output_name = normalize_path(rel_path.with_extension("html").as_ref());
     let page_uri = PageUri::from_path(rel_path.as_str());
     let graph_name = page_uri.as_str();
 
@@ -246,10 +248,10 @@ fn parse_and_ingest(
     }
 
     // Build JSON-LD
-    let page_output_path = rel_path.with_extension("");
+    let page_output_path = normalize_path(rel_path.with_extension("").as_ref());
     let jsonld = build_jsonld(
         &config.base_url,
-        page_output_path.as_str(),
+        &page_output_path,
         Some(&title),
         date.as_deref(),
         author.as_deref(),
@@ -258,7 +260,7 @@ fn parse_and_ingest(
     let json_ld_str = serde_json::to_string_pretty(&jsonld)?;
 
     Ok(Some(ParsedPage {
-        output_path: output_name.to_string(),
+        output_path: output_name,
         content_html: html,
         json_ld_str,
         template,
@@ -395,10 +397,11 @@ pub fn build_to_memory(
     let mut map = HashMap::new();
     for page in pages {
         // Normalize path: "index.html" -> "/", "blog/first-post.html" -> "/blog/first-post.html"
-        let url_path = if page.output_path == "index.html" {
+        let normalized = normalize_path(&page.output_path);
+        let url_path = if normalized == "index.html" {
             "/".to_string()
         } else {
-            format!("/{}", page.output_path)
+            format!("/{normalized}")
         };
         map.insert(url_path, page.html);
     }
