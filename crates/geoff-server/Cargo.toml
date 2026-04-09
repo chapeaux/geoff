@@ -1,6 +1,6 @@
 [package]
 name = "geoff-server"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -10,11 +10,11 @@ keywords = ["server", "dev-server", "hot-reload", "axum"]
 categories = ["web-programming::http-server"]
 
 [dependencies]
-geoff-core = { version = "0.1.0", path = "../geoff-core" }
-geoff-graph = { version = "0.1.0", path = "../geoff-graph" }
-geoff-content = { version = "0.1.0", path = "../geoff-content" }
-geoff-render = { version = "0.1.0", path = "../geoff-render" }
-geoff-ontology = { version = "0.1.0", path = "../geoff-ontology" }
+geoff-core = { version = "0.2.0", path = "../geoff-core" }
+geoff-graph = { version = "0.2.0", path = "../geoff-graph" }
+geoff-content = { version = "0.2.0", path = "../geoff-content" }
+geoff-render = { version = "0.2.0", path = "../geoff-render" }
+geoff-ontology = { version = "0.2.0", path = "../geoff-ontology" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 notify = "8"

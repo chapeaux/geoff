@@ -472,7 +472,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chapeaux-geoff"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "clap",
@@ -1202,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-content"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "geoff-core",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "serde",
@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-deno"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "geoff-core",
@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-graph"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "geoff-core",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-ontology"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "geoff-core",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-plugin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "camino",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-reading-time"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "geoff-plugin",
@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-render"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "camino",
  "geoff-content",
@@ -1312,7 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "geoff-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "camino",
