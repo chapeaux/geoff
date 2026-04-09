@@ -1307,6 +1307,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tera",
+ "toml 0.8.23",
 ]
 
 [[package]]

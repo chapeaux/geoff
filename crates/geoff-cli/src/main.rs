@@ -416,6 +416,13 @@ async fn cmd_build(
         outputs.insert(page.output_path.clone(), page.html.clone());
     }
 
+    // Copy static files to output directory
+    let static_dir = path.join("static");
+    if static_dir.exists() {
+        copy_dir_recursive(static_dir.as_std_path(), output_dir.as_std_path())?;
+        v.detail("Copied static files");
+    }
+
     // Dispatch on_build_complete
     let output_dir_utf8 = camino::Utf8Path::new(output_dir.as_str());
     registry

@@ -187,11 +187,50 @@ async fn page_handler(
             };
             Html(injected).into_response()
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            Html("<h1>404 Not Found</h1>".to_string()),
-        )
-            .into_response(),
+        None => {
+            // Try serving from static/ directory
+            let static_path = state
+                .site_root
+                .join("static")
+                .join(path.trim_start_matches('/'));
+            if static_path.is_file() {
+                let content_type = match static_path
+                    .extension()
+                    .unwrap_or("")
+                {
+                    "css" => "text/css",
+                    "js" => "application/javascript",
+                    "svg" => "image/svg+xml",
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "ico" => "image/x-icon",
+                    "woff2" => "font/woff2",
+                    "woff" => "font/woff",
+                    "json" => "application/json",
+                    "xml" => "application/xml",
+                    _ => "application/octet-stream",
+                };
+                match std::fs::read(&static_path) {
+                    Ok(bytes) => (
+                        StatusCode::OK,
+                        [(axum::http::header::CONTENT_TYPE, content_type)],
+                        bytes,
+                    )
+                        .into_response(),
+                    Err(_) => (
+                        StatusCode::NOT_FOUND,
+                        Html("<h1>404 Not Found</h1>".to_string()),
+                    )
+                        .into_response(),
+                }
+            } else {
+                (
+                    StatusCode::NOT_FOUND,
+                    Html("<h1>404 Not Found</h1>".to_string()),
+                )
+                    .into_response()
+            }
+        }
     }
 }
 

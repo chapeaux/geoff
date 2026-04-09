@@ -10,6 +10,7 @@ use geoff_core::config::SiteConfig;
 use geoff_core::types::{ObjectValue, PageUri, normalize_path, xsd};
 use geoff_graph::store::ContentStore;
 use geoff_ontology::mappings::MappingRegistry;
+use serde_json::Value as JsonValue;
 use rayon::prelude::*;
 
 use crate::jsonld::build_jsonld;
@@ -191,7 +192,7 @@ fn parse_and_ingest(
         Err(_) => return Ok(None),
     };
 
-    let (frontmatter, _rdf_fields) = parse_frontmatter(fm_str)?;
+    let (frontmatter, rdf_fields) = parse_frontmatter(fm_str)?;
     let html = render_markdown(body);
 
     let title = frontmatter
@@ -199,7 +200,7 @@ fn parse_and_ingest(
         .and_then(|v| v.as_str())
         .unwrap_or("Untitled")
         .to_string();
-    let date = frontmatter.get("date").map(|v| v.to_string());
+    let date = frontmatter.get("date").map(toml_value_to_string);
     let author = frontmatter
         .get("author")
         .and_then(|v| v.as_str())
@@ -231,6 +232,9 @@ fn parse_and_ingest(
     let page_uri = PageUri::from_path(rel_path.as_str());
     let graph_name = page_uri.as_str();
 
+    // Compute page URL path from output name
+    let page_url = output_path_to_url(&output_name);
+
     // Insert triples into the graph (sequential)
     insert_page_triples(&PageTriples {
         store,
@@ -239,9 +243,14 @@ fn parse_and_ingest(
         title: Some(&title),
         date: date.as_deref(),
         author: author.as_deref(),
+        description: description.as_deref(),
         content_type: content_type.as_deref(),
+        url: Some(&page_url),
         registry,
     })?;
+
+    // Insert [rdf.custom] fields as triples
+    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields)?;
 
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
@@ -284,22 +293,32 @@ fn ingest_triples_only(
         Ok(pair) => pair,
         Err(_) => return Ok(()),
     };
-    let (frontmatter, _) = parse_frontmatter(fm_str)?;
+    let (frontmatter, rdf_fields) = parse_frontmatter(fm_str)?;
 
     let rel_path = file_path.strip_prefix(content_dir).unwrap_or(file_path);
+    let output_name = normalize_path(rel_path.with_extension("html").as_ref());
     let page_uri = PageUri::from_path(rel_path.as_str());
     let graph_name = page_uri.as_str();
+    let date_str = frontmatter.get("date").map(toml_value_to_string);
+    let page_url = output_path_to_url(&output_name);
 
     insert_page_triples(&PageTriples {
         store,
         page_uri: &page_uri,
         graph_name,
         title: frontmatter.get("title").and_then(|v| v.as_str()),
-        date: frontmatter.get("date").map(|v| v.to_string()).as_deref(),
+        date: date_str.as_deref(),
         author: frontmatter.get("author").and_then(|v| v.as_str()),
+        description: frontmatter
+            .get("description")
+            .and_then(|v| v.as_str()),
         content_type: frontmatter.get("type").and_then(|v| v.as_str()),
+        url: Some(&page_url),
         registry,
     })?;
+
+    // Insert [rdf.custom] fields as triples
+    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields)?;
 
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
@@ -328,8 +347,33 @@ struct PageTriples<'a> {
     title: Option<&'a str>,
     date: Option<&'a str>,
     author: Option<&'a str>,
+    description: Option<&'a str>,
     content_type: Option<&'a str>,
+    url: Option<&'a str>,
     registry: &'a MappingRegistry,
+}
+
+/// Convert a TOML value to a clean string, handling Datetime specially
+/// to avoid the `{ "$__toml_private_datetime" = "..." }` output.
+fn toml_value_to_string(v: &toml::Value) -> String {
+    match v {
+        toml::Value::Datetime(dt) => dt.to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Convert an output file path to a URL path.
+/// e.g. "blog/2026-03-30-welcome.html" → "/blog/2026-03-30-welcome.html"
+///      "blog/index.html" → "/blog/"
+///      "index.html" → "/"
+fn output_path_to_url(output_path: &str) -> String {
+    if output_path == "index.html" {
+        "/".to_string()
+    } else if let Some(dir) = output_path.strip_suffix("/index.html") {
+        format!("/{dir}/")
+    } else {
+        format!("/{output_path}")
+    }
 }
 
 fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -369,6 +413,14 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
             graph_name,
         )?;
     }
+    if let Some(desc) = p.description {
+        store.insert_triple_into(
+            page_uri.as_str(),
+            "http://schema.org/description",
+            &ObjectValue::Literal(desc.to_string()),
+            graph_name,
+        )?;
+    }
     if let Some(ct) = p.content_type {
         // Try mapping registry first, then fall back to defaults
         let type_iri = p
@@ -383,7 +435,60 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
             graph_name,
         )?;
     }
+    if let Some(url) = p.url {
+        store.insert_triple_into(
+            page_uri.as_str(),
+            "http://schema.org/url",
+            &ObjectValue::Literal(url.to_string()),
+            graph_name,
+        )?;
+    }
     Ok(())
+}
+
+/// Insert `[rdf.custom]` fields as triples in the graph.
+/// Keys are predicate IRIs (full or prefixed, e.g. "geoff:stage" or "http://example.org/prop").
+/// Values are converted from JSON to RDF literals.
+fn insert_custom_triples(
+    store: &ContentStore,
+    page_uri: &PageUri,
+    graph_name: &str,
+    rdf_fields: &HashMap<String, JsonValue>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    for (key, value) in rdf_fields {
+        // Expand prefixed IRIs (e.g. "geoff:stage" → "urn:geoff:ontology:stage")
+        let predicate = MappingRegistry::expand_iri(key).unwrap_or_else(|| key.clone());
+        let obj = json_to_object_value(value);
+        store.insert_triple_into(page_uri.as_str(), &predicate, &obj, graph_name)?;
+    }
+    Ok(())
+}
+
+/// Convert a JSON value to an RDF object value.
+fn json_to_object_value(value: &JsonValue) -> ObjectValue {
+    match value {
+        JsonValue::String(s) => ObjectValue::Literal(s.clone()),
+        JsonValue::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                ObjectValue::TypedLiteral {
+                    value: i.to_string(),
+                    datatype: xsd::INTEGER.to_string(),
+                }
+            } else if let Some(f) = n.as_f64() {
+                ObjectValue::TypedLiteral {
+                    value: f.to_string(),
+                    datatype: xsd::DOUBLE.to_string(),
+                }
+            } else {
+                ObjectValue::Literal(n.to_string())
+            }
+        }
+        JsonValue::Bool(b) => ObjectValue::TypedLiteral {
+            value: b.to_string(),
+            datatype: xsd::BOOLEAN.to_string(),
+        },
+        _ => ObjectValue::Literal(value.to_string()),
+    }
 }
 
 /// Build all pages and return them as an in-memory map of URL path -> HTML.
@@ -406,4 +511,154 @@ pub fn build_to_memory(
         map.insert(url_path, page.html);
     }
     Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn json_to_object_value_string() {
+        let val = JsonValue::String("hello".into());
+        assert_eq!(json_to_object_value(&val), ObjectValue::Literal("hello".into()));
+    }
+
+    #[test]
+    fn json_to_object_value_integer() {
+        let val = serde_json::json!(42);
+        assert_eq!(
+            json_to_object_value(&val),
+            ObjectValue::TypedLiteral {
+                value: "42".into(),
+                datatype: xsd::INTEGER.into(),
+            }
+        );
+    }
+
+    #[test]
+    fn json_to_object_value_bool() {
+        let val = serde_json::json!(true);
+        assert_eq!(
+            json_to_object_value(&val),
+            ObjectValue::TypedLiteral {
+                value: "true".into(),
+                datatype: xsd::BOOLEAN.into(),
+            }
+        );
+    }
+
+    #[test]
+    fn insert_custom_triples_expands_prefixed_iris() {
+        let store = ContentStore::new().unwrap();
+        let page_uri = PageUri::from_path("test.md");
+        let graph_name = page_uri.as_str();
+
+        let mut fields = HashMap::new();
+        fields.insert("geoff:stage".to_string(), JsonValue::String("develop".into()));
+        fields.insert(
+            "http://example.org/custom".to_string(),
+            JsonValue::String("value".into()),
+        );
+
+        insert_custom_triples(&store, &page_uri, graph_name, &fields).unwrap();
+
+        // Query the expanded geoff:stage triple
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:ontology:stage> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["val"], "develop");
+
+        // Query the full IRI triple
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <http://example.org/custom> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["val"], "value");
+    }
+
+    #[test]
+    fn build_site_ingests_rdf_custom_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        // Create geoff.toml
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        // Create content with [rdf.custom]
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("project.md"),
+            r#"+++
+title = "My Project"
+template = "page.html"
+type = "Web Page"
+description = "A test project"
+
+[rdf.custom]
+"geoff:stage" = "develop"
+"geoff:status" = "Active"
+"geoff:language" = "Rust"
++++
+
+# My Project
+"#,
+        )
+        .unwrap();
+
+        // Create minimal template
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "<h1>{{ title }}</h1>\n{{ content | safe }}",
+        )
+        .unwrap();
+
+        // Build
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer = crate::renderer::SiteRenderer::new(
+            &site_root.join(&config.template_dir),
+        )
+        .unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 1);
+
+        // Verify custom fields are in the graph
+        let results = store
+            .query_to_json(
+                "SELECT ?stage ?status ?lang WHERE { GRAPH ?g { ?s <urn:geoff:ontology:stage> ?stage . ?s <urn:geoff:ontology:status> ?status . ?s <urn:geoff:ontology:language> ?lang } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "Expected 1 result, got: {arr:?}");
+        assert_eq!(arr[0]["stage"], "develop");
+        assert_eq!(arr[0]["status"], "Active");
+        assert_eq!(arr[0]["lang"], "Rust");
+
+        // Verify description is also in the graph
+        let results = store
+            .query_to_json(
+                "SELECT ?desc WHERE { GRAPH ?g { ?s <http://schema.org/description> ?desc } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["desc"], "A test project");
+    }
 }
