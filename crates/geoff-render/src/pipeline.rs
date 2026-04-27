@@ -95,6 +95,10 @@ pub fn build_site_incremental(
         true
     };
 
+    // Find templates that use sparql() — these must always be re-rendered
+    // because their output depends on graph state, not just their own source.
+    let sparql_templates = find_sparql_templates(&site_root.join(&config.template_dir))?;
+
     // Phase 1: Sequential parse + graph ingestion
     let mut to_render: Vec<ParsedPage> = Vec::new();
 
@@ -113,6 +117,20 @@ pub fn build_site_incremental(
                 &current_hash,
             )
         {
+            // File unchanged — but if its template uses SPARQL, always rebuild
+            if !sparql_templates.is_empty() {
+                if let Ok(template) = read_frontmatter_template(file_path) {
+                    if sparql_templates.contains(&template) {
+                        if let Some(parsed) =
+                            parse_and_ingest(file_path, &content_dir, config, store, &registry)?
+                        {
+                            to_render.push(parsed);
+                        }
+                        continue;
+                    }
+                }
+            }
+
             // Still need to ingest triples for unchanged files
             // so SPARQL queries see all content
             ingest_triples_only(file_path, &content_dir, store, &registry)?;
@@ -513,6 +531,48 @@ pub fn build_to_memory(
     Ok(map)
 }
 
+/// Scan template files for `sparql(` usage and return the set of template names that contain it.
+fn find_sparql_templates(
+    template_dir: &Utf8Path,
+) -> std::result::Result<std::collections::HashSet<String>, Box<dyn std::error::Error>> {
+    let mut result = std::collections::HashSet::new();
+    if !template_dir.exists() {
+        return Ok(result);
+    }
+    fn walk(dir: &std::path::Path, base: &std::path::Path, out: &mut std::collections::HashSet<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, base, out)?;
+            } else if let Ok(content) = std::fs::read_to_string(&path) {
+                if content.contains("sparql(") {
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        out.insert(rel.to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(template_dir.as_std_path(), template_dir.as_std_path(), &mut result)?;
+    Ok(result)
+}
+
+/// Read just the template name from a content file's frontmatter.
+fn read_frontmatter_template(
+    file_path: &Utf8Path,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let raw = std::fs::read_to_string(file_path)?;
+    let (fm_str, _) = split_frontmatter(&raw)?;
+    let (frontmatter, _) = parse_frontmatter(fm_str)?;
+    Ok(frontmatter
+        .get("template")
+        .and_then(|v| v.as_str())
+        .unwrap_or("page.html")
+        .to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,5 +720,142 @@ description = "A test project"
         let arr = results.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["desc"], "A test project");
+    }
+
+    #[test]
+    fn find_sparql_templates_detects_usage() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmpl_dir = Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            tmpl_dir.join("page.html").as_std_path(),
+            "<h1>{{ title }}</h1>",
+        )
+        .unwrap();
+        std::fs::write(
+            tmpl_dir.join("listing.html").as_std_path(),
+            r#"{% set items = sparql(query="SELECT ?t WHERE { ?s ?p ?t }") %}"#,
+        )
+        .unwrap();
+
+        let result = find_sparql_templates(tmpl_dir).unwrap();
+        assert!(result.contains("listing.html"));
+        assert!(!result.contains("page.html"));
+    }
+
+    #[test]
+    fn sparql_dependent_page_rebuilt_on_incremental() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+
+        // A listing page with a SPARQL template
+        std::fs::write(
+            content_dir.join("index.md"),
+            "+++\ntitle = \"Home\"\ntemplate = \"listing.html\"\n+++\nHome page\n",
+        )
+        .unwrap();
+
+        // A regular page
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About\"\ntemplate = \"page.html\"\n+++\nAbout\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "<h1>{{ title }}</h1>\n{{ content | safe }}",
+        )
+        .unwrap();
+        std::fs::write(
+            tmpl_dir.join("listing.html"),
+            r#"{% set results = sparql(query="SELECT ?title WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title } }") %}{% for row in results %}{{ row.title }} {% endfor %}"#,
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        // First build: everything renders
+        let (pages, stats) = build_site_incremental(
+            site_root,
+            &config,
+            &store,
+            &renderer,
+            None,
+        )
+        .unwrap();
+        assert_eq!(stats.built, 2);
+        assert_eq!(stats.skipped, 0);
+        let listing = pages.iter().find(|p| p.output_path == "index.html").unwrap();
+        assert!(listing.html.contains("Home"));
+        assert!(listing.html.contains("About"));
+
+        // Build a cache from the first build
+        let mut cache = BuildCache::default();
+        let template_hash = geoff_core::cache::hash_directory(
+            &site_root.join(&config.template_dir),
+        )
+        .unwrap();
+        cache.template_hash = Some(template_hash);
+        for file in scan_content_dir(&content_dir).unwrap() {
+            let rel = normalize_path(
+                file.strip_prefix(&content_dir).unwrap_or(&file).as_str(),
+            );
+            let hash = hash_file(&file).unwrap();
+            cache.record(rel, hash);
+        }
+
+        // Add a new blog post
+        std::fs::write(
+            content_dir.join("new-post.md"),
+            "+++\ntitle = \"New Post\"\ntemplate = \"page.html\"\ntype = \"Blog Post\"\n+++\nNew content\n",
+        )
+        .unwrap();
+
+        // Second incremental build with cache
+        let store2 = Arc::new(ContentStore::new().unwrap());
+        let mut renderer2 =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer2.register_sparql_function(store2.clone());
+
+        let (pages2, stats2) = build_site_incremental(
+            site_root,
+            &config,
+            &store2,
+            &renderer2,
+            Some(&cache),
+        )
+        .unwrap();
+
+        // The new post should be built (it's new, not in cache)
+        // The listing page should ALSO be rebuilt (uses SPARQL)
+        // The about page should be skipped (unchanged, no SPARQL)
+        assert_eq!(stats2.skipped, 1, "about.md should be skipped");
+        assert!(stats2.built >= 2, "new-post.md and index.md should be built");
+
+        let listing2 = pages2
+            .iter()
+            .find(|p| p.output_path == "index.html")
+            .expect("listing page should be in built pages");
+        assert!(
+            listing2.html.contains("New Post"),
+            "listing should include the new post, got: {}",
+            listing2.html
+        );
     }
 }
