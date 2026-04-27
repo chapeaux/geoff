@@ -115,12 +115,8 @@ jobs:
       - name: Set version from tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Update workspace version
-          sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
-          # Update all crate versions
-          find crates -name Cargo.toml -exec sed -i "0,/^version = .*/s//version = \"$VERSION\"/" {} \;
-          # Update plugin versions
-          find plugins -name Cargo.toml -exec sed -i "0,/^version = .*/s//version = \"$VERSION\"/" {} \;
+          # Update all version strings in all Cargo.toml files
+          find . -name Cargo.toml -exec sed -i "s/\"0\.[0-9]*\.[0-9]*\"/\"$VERSION\"/g" {} \;
 
       - name: Publish geoff-core
         run: cargo publish -p geoff-core --token "${{ secrets.CARGO_REGISTRY_TOKEN }}" --allow-dirty

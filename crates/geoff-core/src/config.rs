@@ -21,6 +21,19 @@ pub struct PluginConfig {
     pub options: HashMap<String, toml::Value>,
 }
 
+/// Client-side search configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_search_output")]
+    pub output: String,
+}
+
+fn default_search_output() -> String {
+    "search.nt".to_string()
+}
+
 /// Site configuration loaded from `geoff.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SiteConfig {
@@ -34,6 +47,8 @@ pub struct SiteConfig {
     pub template_dir: Utf8PathBuf,
     #[serde(default, rename = "plugins")]
     pub plugins: Vec<PluginConfig>,
+    #[serde(default)]
+    pub search: SearchConfig,
 }
 
 fn default_content_dir() -> Utf8PathBuf {

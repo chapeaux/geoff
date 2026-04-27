@@ -141,6 +141,34 @@ impl ContentStore {
         Ok(())
     }
 
+    /// Export search-relevant triples as N-Triples for client-side SPARQL search.
+    ///
+    /// Includes only predicates useful for search: name, description, date,
+    /// URL, keywords, and rdf:type. The output can be loaded into oxigraph's
+    /// WASM build in the browser.
+    pub fn export_search_ntriples(&self) -> std::result::Result<String, Box<dyn std::error::Error>> {
+        use std::fmt::Write;
+        let search_predicates: std::collections::HashSet<&str> = [
+            "http://schema.org/name",
+            "http://schema.org/description",
+            "http://schema.org/datePublished",
+            "http://schema.org/url",
+            "http://schema.org/keywords",
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+        ]
+        .into_iter()
+        .collect();
+
+        let mut out = String::new();
+        for quad in self.store.iter() {
+            let quad = quad?;
+            if search_predicates.contains(quad.predicate.as_str()) {
+                writeln!(out, "{} {} {} .", quad.subject, quad.predicate, quad.object)?;
+            }
+        }
+        Ok(out)
+    }
+
     /// Export all triples (flattened from all named graphs) as NTriples.
     ///
     /// This is useful for SHACL validation, which operates on a flat graph.

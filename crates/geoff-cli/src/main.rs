@@ -423,6 +423,14 @@ async fn cmd_build(
         v.detail("Copied static files");
     }
 
+    // Generate search index if enabled
+    if config.search.enabled {
+        let nt = store.export_search_ntriples()?;
+        let search_path = output_dir.join(&config.search.output);
+        std::fs::write(&search_path, &nt)?;
+        v.detail(&format!("Wrote search index: {}", config.search.output));
+    }
+
     // Dispatch on_build_complete
     let output_dir_utf8 = camino::Utf8Path::new(output_dir.as_str());
     registry
