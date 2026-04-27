@@ -106,6 +106,7 @@ jobs:
     name: Publish to crates.io
     needs: release
     runs-on: ubuntu-latest
+    environment: npm
     steps:
       - uses: actions/checkout@v5
 

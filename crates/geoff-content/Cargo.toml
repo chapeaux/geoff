@@ -1,6 +1,6 @@
 [package]
 name = "geoff-content"
-version = "0.2.2"
+version = "0.2.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -10,8 +10,8 @@ keywords = ["markdown", "frontmatter", "rdf", "parsing"]
 categories = ["parsing", "text-processing"]
 
 [dependencies]
-geoff-core = { version = "0.2.2", path = "../geoff-core" }
-geoff-graph = { version = "0.2.2", path = "../geoff-graph" }
+geoff-core = { version = "0.2.3", path = "../geoff-core" }
+geoff-graph = { version = "0.2.3", path = "../geoff-graph" }
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

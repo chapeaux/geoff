@@ -1,6 +1,6 @@
 [package]
 name = "chapeaux-geoff"
-version = "0.2.2"
+version = "0.2.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,14 +14,14 @@ name = "geoff"
 path = "src/main.rs"
 
 [dependencies]
-geoff-core = { version = "0.2.2", path = "../geoff-core" }
-geoff-graph = { version = "0.2.2", path = "../geoff-graph" }
-geoff-content = { version = "0.2.2", path = "../geoff-content" }
-geoff-render = { version = "0.2.2", path = "../geoff-render" }
-geoff-server = { version = "0.2.2", path = "../geoff-server" }
-geoff-ontology = { version = "0.2.2", path = "../geoff-ontology" }
-geoff-plugin = { version = "0.2.2", path = "../geoff-plugin" }
-geoff-deno = { version = "0.2.2", path = "../geoff-deno" }
+geoff-core = { version = "0.2.3", path = "../geoff-core" }
+geoff-graph = { version = "0.2.3", path = "../geoff-graph" }
+geoff-content = { version = "0.2.3", path = "../geoff-content" }
+geoff-render = { version = "0.2.3", path = "../geoff-render" }
+geoff-server = { version = "0.2.3", path = "../geoff-server" }
+geoff-ontology = { version = "0.2.3", path = "../geoff-ontology" }
+geoff-plugin = { version = "0.2.3", path = "../geoff-plugin" }
+geoff-deno = { version = "0.2.3", path = "../geoff-deno" }
 clap = { version = "4", features = ["derive"] }
 colored = "3"
 tokio = { version = "1", features = ["full"] }
