@@ -1,6 +1,7 @@
 use camino::Utf8Path;
 use rudof_lib::{
-    RDFFormat, ReaderMode, Rudof, RudofConfig, ShaclFormat, ShaclValidationMode, ShapesGraphSource,
+    RDFFormat, ReaderMode, Rudof, RudofConfig, ShaclFormat, ShaclValidationMode,
+    ShapesGraphSource,
 };
 
 /// Result of SHACL validation against content data.
@@ -24,11 +25,10 @@ pub fn validate_shacl(
     shapes_ttl: &str,
 ) -> std::result::Result<ValidationOutcome, Box<dyn std::error::Error>> {
     let config =
-        RudofConfig::default_config().map_err(|e| format!("Failed to create rudof config: {e}"))?;
+        RudofConfig::new().map_err(|e| format!("Failed to create rudof config: {e}"))?;
     let mut rudof =
         Rudof::new(&config).map_err(|e| format!("Failed to create rudof instance: {e}"))?;
 
-    // Load data
     rudof
         .read_data(
             &mut data_ttl.as_bytes(),
@@ -40,7 +40,6 @@ pub fn validate_shacl(
         )
         .map_err(|e| format!("Failed to read data: {e}"))?;
 
-    // Load SHACL shapes
     rudof
         .read_shacl(
             &mut shapes_ttl.as_bytes(),
@@ -51,7 +50,6 @@ pub fn validate_shacl(
         )
         .map_err(|e| format!("Failed to read shapes: {e}"))?;
 
-    // Run validation
     let report = rudof
         .validate_shacl(
             Some(&ShaclValidationMode::Native),
