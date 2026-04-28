@@ -118,17 +118,16 @@ pub fn build_site_incremental(
             )
         {
             // File unchanged — but if its template uses SPARQL, always rebuild
-            if !sparql_templates.is_empty() {
-                if let Ok(template) = read_frontmatter_template(file_path) {
-                    if sparql_templates.contains(&template) {
-                        if let Some(parsed) =
-                            parse_and_ingest(file_path, &content_dir, config, store, &registry)?
-                        {
-                            to_render.push(parsed);
-                        }
-                        continue;
-                    }
+            if !sparql_templates.is_empty()
+                && let Ok(template) = read_frontmatter_template(file_path)
+                && sparql_templates.contains(&template)
+            {
+                if let Some(parsed) =
+                    parse_and_ingest(file_path, &content_dir, config, store, &registry)?
+                {
+                    to_render.push(parsed);
                 }
+                continue;
             }
 
             // Still need to ingest triples for unchanged files
@@ -547,12 +546,11 @@ fn find_sparql_templates(
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, base, out)?;
-            } else if let Ok(content) = std::fs::read_to_string(&path) {
-                if content.contains("sparql(") {
-                    if let Ok(rel) = path.strip_prefix(base) {
-                        out.insert(rel.to_string_lossy().into_owned());
-                    }
-                }
+            } else if let Ok(content) = std::fs::read_to_string(&path)
+                && content.contains("sparql(")
+                && let Ok(rel) = path.strip_prefix(base)
+            {
+                out.insert(rel.to_string_lossy().into_owned());
             }
         }
         Ok(())
