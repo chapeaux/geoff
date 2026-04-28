@@ -194,10 +194,7 @@ async fn page_handler(
                 .join("static")
                 .join(path.trim_start_matches('/'));
             if static_path.is_file() {
-                let content_type = match static_path
-                    .extension()
-                    .unwrap_or("")
-                {
+                let content_type = match static_path.extension().unwrap_or("") {
                     "css" => "text/css",
                     "js" => "application/javascript",
                     "svg" => "image/svg+xml",

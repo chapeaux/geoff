@@ -10,8 +10,8 @@ use geoff_core::config::SiteConfig;
 use geoff_core::types::{ObjectValue, PageUri, normalize_path, xsd};
 use geoff_graph::store::ContentStore;
 use geoff_ontology::mappings::MappingRegistry;
-use serde_json::Value as JsonValue;
 use rayon::prelude::*;
+use serde_json::Value as JsonValue;
 
 use crate::jsonld::build_jsonld;
 use crate::renderer::{PageContext, SiteRenderer, build_page_context};
@@ -327,9 +327,7 @@ fn ingest_triples_only(
         title: frontmatter.get("title").and_then(|v| v.as_str()),
         date: date_str.as_deref(),
         author: frontmatter.get("author").and_then(|v| v.as_str()),
-        description: frontmatter
-            .get("description")
-            .and_then(|v| v.as_str()),
+        description: frontmatter.get("description").and_then(|v| v.as_str()),
         content_type: frontmatter.get("type").and_then(|v| v.as_str()),
         url: Some(&page_url),
         registry,
@@ -539,7 +537,11 @@ fn find_sparql_templates(
     if !template_dir.exists() {
         return Ok(result);
     }
-    fn walk(dir: &std::path::Path, base: &std::path::Path, out: &mut std::collections::HashSet<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn walk(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        out: &mut std::collections::HashSet<String>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -555,7 +557,11 @@ fn find_sparql_templates(
         }
         Ok(())
     }
-    walk(template_dir.as_std_path(), template_dir.as_std_path(), &mut result)?;
+    walk(
+        template_dir.as_std_path(),
+        template_dir.as_std_path(),
+        &mut result,
+    )?;
     Ok(result)
 }
 
@@ -581,7 +587,10 @@ mod tests {
     #[test]
     fn json_to_object_value_string() {
         let val = JsonValue::String("hello".into());
-        assert_eq!(json_to_object_value(&val), ObjectValue::Literal("hello".into()));
+        assert_eq!(
+            json_to_object_value(&val),
+            ObjectValue::Literal("hello".into())
+        );
     }
 
     #[test]
@@ -615,7 +624,10 @@ mod tests {
         let graph_name = page_uri.as_str();
 
         let mut fields = HashMap::new();
-        fields.insert("geoff:stage".to_string(), JsonValue::String("develop".into()));
+        fields.insert(
+            "geoff:stage".to_string(),
+            JsonValue::String("develop".into()),
+        );
         fields.insert(
             "http://example.org/custom".to_string(),
             JsonValue::String("value".into()),
@@ -625,9 +637,7 @@ mod tests {
 
         // Query the expanded geoff:stage triple
         let results = store
-            .query_to_json(
-                "SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:ontology:stage> ?val } }",
-            )
+            .query_to_json("SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:ontology:stage> ?val } }")
             .unwrap();
         let arr = results.as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -635,9 +645,7 @@ mod tests {
 
         // Query the full IRI triple
         let results = store
-            .query_to_json(
-                "SELECT ?val WHERE { GRAPH ?g { ?s <http://example.org/custom> ?val } }",
-            )
+            .query_to_json("SELECT ?val WHERE { GRAPH ?g { ?s <http://example.org/custom> ?val } }")
             .unwrap();
         let arr = results.as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -690,10 +698,8 @@ description = "A test project"
         // Build
         let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
         let store = Arc::new(ContentStore::new().unwrap());
-        let mut renderer = crate::renderer::SiteRenderer::new(
-            &site_root.join(&config.template_dir),
-        )
-        .unwrap();
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
         renderer.register_sparql_function(store.clone());
 
         let pages = build_site(site_root, &config, &store, &renderer).unwrap();
@@ -791,31 +797,24 @@ description = "A test project"
         renderer.register_sparql_function(store.clone());
 
         // First build: everything renders
-        let (pages, stats) = build_site_incremental(
-            site_root,
-            &config,
-            &store,
-            &renderer,
-            None,
-        )
-        .unwrap();
+        let (pages, stats) =
+            build_site_incremental(site_root, &config, &store, &renderer, None).unwrap();
         assert_eq!(stats.built, 2);
         assert_eq!(stats.skipped, 0);
-        let listing = pages.iter().find(|p| p.output_path == "index.html").unwrap();
+        let listing = pages
+            .iter()
+            .find(|p| p.output_path == "index.html")
+            .unwrap();
         assert!(listing.html.contains("Home"));
         assert!(listing.html.contains("About"));
 
         // Build a cache from the first build
         let mut cache = BuildCache::default();
-        let template_hash = geoff_core::cache::hash_directory(
-            &site_root.join(&config.template_dir),
-        )
-        .unwrap();
+        let template_hash =
+            geoff_core::cache::hash_directory(&site_root.join(&config.template_dir)).unwrap();
         cache.template_hash = Some(template_hash);
         for file in scan_content_dir(&content_dir).unwrap() {
-            let rel = normalize_path(
-                file.strip_prefix(&content_dir).unwrap_or(&file).as_str(),
-            );
+            let rel = normalize_path(file.strip_prefix(&content_dir).unwrap_or(&file).as_str());
             let hash = hash_file(&file).unwrap();
             cache.record(rel, hash);
         }
@@ -833,20 +832,17 @@ description = "A test project"
             crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
         renderer2.register_sparql_function(store2.clone());
 
-        let (pages2, stats2) = build_site_incremental(
-            site_root,
-            &config,
-            &store2,
-            &renderer2,
-            Some(&cache),
-        )
-        .unwrap();
+        let (pages2, stats2) =
+            build_site_incremental(site_root, &config, &store2, &renderer2, Some(&cache)).unwrap();
 
         // The new post should be built (it's new, not in cache)
         // The listing page should ALSO be rebuilt (uses SPARQL)
         // The about page should be skipped (unchanged, no SPARQL)
         assert_eq!(stats2.skipped, 1, "about.md should be skipped");
-        assert!(stats2.built >= 2, "new-post.md and index.md should be built");
+        assert!(
+            stats2.built >= 2,
+            "new-post.md and index.md should be built"
+        );
 
         let listing2 = pages2
             .iter()

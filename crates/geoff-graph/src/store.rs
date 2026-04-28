@@ -146,7 +146,9 @@ impl ContentStore {
     /// Includes only predicates useful for search: name, description, date,
     /// URL, keywords, and rdf:type. The output can be loaded into oxigraph's
     /// WASM build in the browser.
-    pub fn export_search_ntriples(&self) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    pub fn export_search_ntriples(
+        &self,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         use std::fmt::Write;
         let search_predicates: std::collections::HashSet<&str> = [
             "http://schema.org/name",
