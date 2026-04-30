@@ -25,15 +25,24 @@ pub fn split_frontmatter(
     }
 
     let after_first = &trimmed[3..];
-    let after_first = after_first.strip_prefix('\n').unwrap_or(after_first);
+    let after_first = after_first
+        .strip_prefix("\r\n")
+        .or_else(|| after_first.strip_prefix('\n'))
+        .unwrap_or(after_first);
 
-    let end = after_first
-        .find("\n+++")
+    // Handle both \n+++ and \r\n+++ (Windows line endings)
+    let (end, delim_len) = after_first
+        .find("\r\n+++")
+        .map(|i| (i, 5))
+        .or_else(|| after_first.find("\n+++").map(|i| (i, 4)))
         .ok_or("Missing closing +++ frontmatter delimiter")?;
 
     let frontmatter = &after_first[..end];
-    let body = &after_first[end + 4..];
-    let body = body.strip_prefix('\n').unwrap_or(body);
+    let body = &after_first[end + delim_len..];
+    let body = body
+        .strip_prefix("\r\n")
+        .or_else(|| body.strip_prefix('\n'))
+        .unwrap_or(body);
 
     Ok((frontmatter, body))
 }
@@ -89,6 +98,14 @@ mod tests {
         let (fm, body) = split_frontmatter(input).unwrap();
         assert_eq!(fm, "title = \"Hello\"");
         assert_eq!(body, "# Hello\nBody text");
+    }
+
+    #[test]
+    fn split_windows_line_endings() {
+        let input = "+++\r\ntitle = \"Hello\"\r\n+++\r\n# Hello\r\nBody text";
+        let (fm, body) = split_frontmatter(input).unwrap();
+        assert_eq!(fm, "title = \"Hello\"");
+        assert_eq!(body, "# Hello\r\nBody text");
     }
 
     #[test]
