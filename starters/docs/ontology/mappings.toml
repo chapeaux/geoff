@@ -1,10 +1,10 @@
 [types]
-"Documentation" = "http://schema.org/TechArticle"
-"Guide" = "http://schema.org/HowTo"
-"Web Page" = "http://schema.org/WebPage"
+"Documentation" = "https://schema.org/TechArticle"
+"Guide" = "https://schema.org/HowTo"
+"Web Page" = "https://schema.org/WebPage"
 
 [properties]
-title = "http://schema.org/name"
-author = "http://schema.org/author"
-date = "http://schema.org/datePublished"
-description = "http://schema.org/description"
+title = "https://schema.org/name"
+author = "https://schema.org/author"
+date = "https://schema.org/datePublished"
+description = "https://schema.org/description"

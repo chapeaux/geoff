@@ -48,8 +48,8 @@ class GeoffSearch extends HTMLElement {
 
     try {
       const ox = await import('https://esm.sh/oxigraph@0.5');
-      this._ox = ox.default || ox;
-      this._store = new this._ox.Store();
+      await ox.default();
+      this._store = new ox.Store();
 
       const indexUrl = this.getAttribute('index') || '/search.nt';
       const response = await fetch(indexUrl);
@@ -82,18 +82,26 @@ class GeoffSearch extends HTMLElement {
     const limit = parseInt(this.getAttribute('limit') || '20', 10);
 
     const sparql = `
-      SELECT ?title ?url ?desc ?date ?type WHERE {
-        ?s <http://schema.org/name> ?title .
-        OPTIONAL { ?s <http://schema.org/url> ?url }
-        OPTIONAL { ?s <http://schema.org/description> ?desc }
-        OPTIONAL { ?s <http://schema.org/datePublished> ?date }
+      SELECT DISTINCT ?s ?title ?url ?desc ?date ?type WHERE {
+        ?s <https://schema.org/name> ?title .
+        OPTIONAL { ?s <https://schema.org/url> ?url }
+        OPTIONAL { ?s <https://schema.org/description> ?desc }
+        OPTIONAL { ?s <https://schema.org/datePublished> ?date }
         OPTIONAL { ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?type }
+        OPTIONAL { ?s <urn:rhds:elementName> ?elname }
+        OPTIONAL { ?s <urn:rhds:tagName> ?tagname }
+        OPTIONAL { ?s <urn:rhds:tags> ?tags }
+        OPTIONAL { ?s <https://schema.org/termCode> ?tokenCode }
         FILTER(
           CONTAINS(LCASE(?title), LCASE("${escaped}"))
           || CONTAINS(LCASE(COALESCE(?desc, "")), LCASE("${escaped}"))
+          || CONTAINS(LCASE(COALESCE(?elname, "")), LCASE("${escaped}"))
+          || CONTAINS(LCASE(COALESCE(?tagname, "")), LCASE("${escaped}"))
+          || CONTAINS(LCASE(COALESCE(?tags, "")), LCASE("${escaped}"))
+          || CONTAINS(LCASE(COALESCE(?tokenCode, "")), LCASE("${escaped}"))
         )
       }
-      ORDER BY DESC(?date)
+      ORDER BY ?title
       LIMIT ${limit}
     `;
 
@@ -119,7 +127,13 @@ class GeoffSearch extends HTMLElement {
 
     container.innerHTML = bindings.map(row => {
       const title = this._esc(row.get('title')?.value || 'Untitled');
-      const url = row.get('url')?.value || '#';
+      let url = row.get('url')?.value || '#';
+      if (url === '#') {
+        const s = row.get('s')?.value || '';
+        if (s.startsWith('urn:geoff:content:')) {
+          url = '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '/').replace(/index\/$/, '');
+        }
+      }
       const desc = this._esc(row.get('desc')?.value || '');
       const date = row.get('date')?.value || '';
 

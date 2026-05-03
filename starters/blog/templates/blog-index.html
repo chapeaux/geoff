@@ -14,7 +14,7 @@
 <div class="container">
   <h1>{{ title }}</h1>
 
-  {% set posts = sparql(query="SELECT ?title ?date ?author WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title . ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/BlogPosting> . OPTIONAL { ?s <http://schema.org/datePublished> ?date } OPTIONAL { ?s <http://schema.org/author> ?author } } } ORDER BY DESC(?date)") %}
+  {% set posts = sparql(query="SELECT ?title ?date ?author WHERE { GRAPH ?g { ?s <https://schema.org/name> ?title . ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://schema.org/BlogPosting> . OPTIONAL { ?s <https://schema.org/datePublished> ?date } OPTIONAL { ?s <https://schema.org/author> ?author } } } ORDER BY DESC(?date)") %}
 
   {% if posts %}
   <ul class="post-list">

@@ -1,11 +1,11 @@
 [types]
-"Blog Post" = "http://schema.org/BlogPosting"
-"Article" = "http://schema.org/Article"
-"Web Page" = "http://schema.org/WebPage"
+"Blog Post" = "https://schema.org/BlogPosting"
+"Article" = "https://schema.org/Article"
+"Web Page" = "https://schema.org/WebPage"
 
 [properties]
-title = "http://schema.org/name"
-author = "http://schema.org/author"
-date = "http://schema.org/datePublished"
-description = "http://schema.org/description"
-tags = "http://schema.org/keywords"
+title = "https://schema.org/name"
+author = "https://schema.org/author"
+date = "https://schema.org/datePublished"
+description = "https://schema.org/description"
+tags = "https://schema.org/keywords"
