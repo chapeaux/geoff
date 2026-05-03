@@ -938,4 +938,40 @@ mod tests {
         let result = renderer.render_with_context("bad.html", &ctx);
         assert!(result.is_err(), "Invalid SPARQL should produce an error");
     }
+
+    #[test]
+    fn rdfa_functions_produce_output() {
+        let store = Arc::new(ContentStore::new().unwrap());
+        let dir = tempfile::tempdir().unwrap();
+
+        std::fs::write(
+            dir.path().join("rdfa.html"),
+            r#"PREFIX={{ rdfa_prefix() | safe }} PROP={{ rdfa_prop(name="title") | safe }} FILTER={{ "hello" | rdfa(prop="author") | safe }}"#,
+        )
+        .unwrap();
+
+        let utf8_dir = Utf8Path::from_path(dir.path()).unwrap();
+        let mut renderer = SiteRenderer::new(utf8_dir).unwrap();
+
+        let mut registry = MappingRegistry::new();
+        registry.add_property("title", "https://schema.org/name");
+        registry.add_property("author", "https://schema.org/author");
+        renderer.register_rdfa_functions(store, Arc::new(registry));
+
+        let ctx = Context::new();
+        let result = renderer.render_with_context("rdfa.html", &ctx).unwrap();
+
+        assert!(
+            result.contains("prefix=\"schema: https://schema.org/"),
+            "rdfa_prefix() should output prefix attribute, got: {result}"
+        );
+        assert!(
+            result.contains("property=\"schema:name\""),
+            "rdfa_prop() should output property attribute, got: {result}"
+        );
+        assert!(
+            result.contains("<span property=\"schema:author\">hello</span>"),
+            "rdfa filter should wrap in span, got: {result}"
+        );
+    }
 }

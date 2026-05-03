@@ -42,21 +42,49 @@ impl Default for MappingRegistry {
 
 impl MappingRegistry {
     pub fn new() -> Self {
-        Self {
+        let mut reg = Self {
             types: HashMap::new(),
             properties: HashMap::new(),
             extra_prefixes: HashMap::new(),
-        }
+        };
+        reg.seed_defaults();
+        reg
     }
 
     /// Load mappings from a TOML file. Returns empty registry if file doesn't exist.
+    /// User-defined mappings override the built-in defaults.
     pub fn load(path: &Utf8Path) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        if !path.exists() {
-            return Ok(Self::new());
-        }
-        let content = std::fs::read_to_string(path)?;
-        let registry: MappingRegistry = toml::from_str(&content)?;
+        let registry = if !path.exists() {
+            Self::new()
+        } else {
+            let content = std::fs::read_to_string(path)?;
+            let mut loaded: MappingRegistry = toml::from_str(&content)?;
+            loaded.seed_defaults();
+            loaded
+        };
         Ok(registry)
+    }
+
+    fn seed_defaults(&mut self) {
+        let defaults = [
+            ("title", "https://schema.org/name"),
+            ("name", "https://schema.org/name"),
+            ("date", "https://schema.org/datePublished"),
+            ("datePublished", "https://schema.org/datePublished"),
+            ("author", "https://schema.org/author"),
+            ("description", "https://schema.org/description"),
+            ("url", "https://schema.org/url"),
+            ("image", "https://schema.org/image"),
+            ("keywords", "https://schema.org/keywords"),
+            ("tags", "https://schema.org/keywords"),
+            ("wordCount", "https://schema.org/wordCount"),
+            ("language", "http://purl.org/dc/terms/language"),
+            ("about", "https://schema.org/about"),
+            ("publisher", "https://schema.org/publisher"),
+        ];
+        for (name, iri) in defaults {
+            self.properties.entry(name.to_string()).or_insert_with(|| iri.to_string());
+        }
     }
 
     /// Save mappings to a TOML file.
@@ -197,11 +225,22 @@ mod tests {
     }
 
     #[test]
-    fn missing_file_returns_empty() {
+    fn missing_file_returns_defaults() {
         let path = camino::Utf8Path::new("/nonexistent/mappings.toml");
         let registry = MappingRegistry::load(path).unwrap();
         assert!(registry.types.is_empty());
-        assert!(registry.properties.is_empty());
+        assert!(
+            !registry.properties.is_empty(),
+            "should have default property mappings"
+        );
+        assert_eq!(
+            registry.resolve_property("title"),
+            Some("https://schema.org/name")
+        );
+        assert_eq!(
+            registry.resolve_property("author"),
+            Some("https://schema.org/author")
+        );
     }
 
     #[test]

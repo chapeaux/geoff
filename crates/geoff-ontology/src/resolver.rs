@@ -214,12 +214,14 @@ mod tests {
         let (registry, index) = setup();
         let resolver = TypeResolver::new(&registry, &index);
 
-        // "name" is the rdfs:label of schema:name
+        // "name" has a default mapping to schema:name in the registry
         let result = resolver.resolve_property("name");
         assert!(
             matches!(
                 result,
-                ResolveResult::ExactMatch(_) | ResolveResult::FuzzyMatches(_)
+                ResolveResult::Mapped(_)
+                    | ResolveResult::ExactMatch(_)
+                    | ResolveResult::FuzzyMatches(_)
             ),
             "Expected match for property 'name', got: {result:?}"
         );
