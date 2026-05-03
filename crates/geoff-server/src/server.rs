@@ -278,6 +278,16 @@ pub async fn run(
                             };
                             map.insert(url_path, page.html);
                         }
+
+                        if state.config.search.enabled {
+                            if let Ok(nt) = state.store.export_search_ntriples() {
+                                map.insert(
+                                    format!("/{}", state.config.search.output),
+                                    nt,
+                                );
+                            }
+                        }
+
                         Ok((renderer, map))
                     }
                 })
@@ -359,6 +369,16 @@ async fn page_handler(
 
     match html {
         Some(content) => {
+            // Serve non-HTML content (e.g. search.nt) with appropriate content type
+            if path.ends_with(".nt") {
+                return (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "application/n-triples")],
+                    content.clone(),
+                )
+                    .into_response();
+            }
+
             // Inject hot-reload script before </body>
             let injected = if let Some(pos) = content.rfind("</body>") {
                 format!(
@@ -689,6 +709,14 @@ async fn build_with_hooks_async(
         };
         map.insert(url_path, page.html);
     }
+
+    // Generate search index so it's available during dev
+    if config.search.enabled {
+        if let Ok(nt) = store.export_search_ntriples() {
+            map.insert(format!("/{}", config.search.output), nt);
+        }
+    }
+
     Ok(map)
 }
 
