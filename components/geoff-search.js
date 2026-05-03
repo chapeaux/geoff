@@ -15,7 +15,6 @@ class GeoffSearch extends HTMLElement {
   constructor() {
     super();
     this._store = null;
-    this._ox = null;
     this._loading = false;
     this._loaded = false;
   }
@@ -56,7 +55,7 @@ class GeoffSearch extends HTMLElement {
       if (!response.ok) throw new Error(`Failed to fetch ${indexUrl}`);
       const nt = await response.text();
 
-      this._store.load(nt, { format: 'application/n-triples' });
+      this._store.load(nt, { format: 'nt' });
       this._loaded = true;
       this._setStatus('');
     } catch (e) {
@@ -78,28 +77,21 @@ class GeoffSearch extends HTMLElement {
     await this._ensureLoaded();
     if (!this._loaded) return;
 
-    const escaped = query.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const tokens = this._parseQuery(query.trim());
+    if (tokens.length === 0) {
+      results.innerHTML = '';
+      this._setStatus('');
+      return;
+    }
+
+    const filter = this._buildFilter(tokens);
     const limit = parseInt(this.getAttribute('limit') || '20', 10);
 
     const sparql = `
-      SELECT DISTINCT ?s ?title ?url ?desc ?date ?type WHERE {
+      SELECT ?s ?title ?desc WHERE {
         ?s <https://schema.org/name> ?title .
-        OPTIONAL { ?s <https://schema.org/url> ?url }
         OPTIONAL { ?s <https://schema.org/description> ?desc }
-        OPTIONAL { ?s <https://schema.org/datePublished> ?date }
-        OPTIONAL { ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?type }
-        OPTIONAL { ?s <urn:rhds:elementName> ?elname }
-        OPTIONAL { ?s <urn:rhds:tagName> ?tagname }
-        OPTIONAL { ?s <urn:rhds:tags> ?tags }
-        OPTIONAL { ?s <https://schema.org/termCode> ?tokenCode }
-        FILTER(
-          CONTAINS(LCASE(?title), LCASE("${escaped}"))
-          || CONTAINS(LCASE(COALESCE(?desc, "")), LCASE("${escaped}"))
-          || CONTAINS(LCASE(COALESCE(?elname, "")), LCASE("${escaped}"))
-          || CONTAINS(LCASE(COALESCE(?tagname, "")), LCASE("${escaped}"))
-          || CONTAINS(LCASE(COALESCE(?tags, "")), LCASE("${escaped}"))
-          || CONTAINS(LCASE(COALESCE(?tokenCode, "")), LCASE("${escaped}"))
-        )
+        FILTER(${filter})
       }
       ORDER BY ?title
       LIMIT ${limit}
@@ -107,11 +99,79 @@ class GeoffSearch extends HTMLElement {
 
     try {
       const bindings = this._store.query(sparql);
-      this._renderResults(bindings, query);
+      const arr = (bindings && typeof bindings[Symbol.iterator] === 'function')
+        ? [...bindings]
+        : bindings;
+      this._renderResults(arr, query);
     } catch (e) {
       console.error('[geoff-search] query error:', e);
       this._setStatus('Search error');
     }
+  }
+
+  /**
+   * Parse a search query into tokens.
+   *
+   * Supports:
+   * - Multiple terms: `foo bar` (implicit AND — both must match)
+   * - Quoted phrases: `"exact phrase"` (case-insensitive exact match)
+   * - OR operator: `foo OR bar` (either must match)
+   * - AND operator: `foo AND bar` (explicit AND, same as space)
+   *
+   * OR binds looser than AND: `a b OR c` → `(a AND b) OR c`
+   */
+  _parseQuery(input) {
+    const tokens = [];
+    let i = 0;
+    while (i < input.length) {
+      if (input[i] === ' ') { i++; continue; }
+
+      if (input[i] === '"') {
+        const end = input.indexOf('"', i + 1);
+        if (end !== -1) {
+          tokens.push({ type: 'term', value: input.slice(i + 1, end) });
+          i = end + 1;
+          continue;
+        }
+      }
+
+      const wordEnd = input.indexOf(' ', i);
+      const word = wordEnd === -1 ? input.slice(i) : input.slice(i, wordEnd);
+      i = wordEnd === -1 ? input.length : wordEnd;
+
+      if (word === 'OR') {
+        tokens.push({ type: 'OR' });
+      } else if (word === 'AND') {
+        continue;
+      } else {
+        tokens.push({ type: 'term', value: word });
+      }
+    }
+    return tokens.filter(t => t.type !== 'term' || t.value.length > 0);
+  }
+
+  _buildFilter(tokens) {
+    const groups = [[]];
+    for (const token of tokens) {
+      if (token.type === 'OR') {
+        groups.push([]);
+      } else {
+        groups[groups.length - 1].push(token);
+      }
+    }
+
+    const groupFilters = groups
+      .filter(g => g.length > 0)
+      .map(group => {
+        const termFilters = group.map(t => {
+          const escaped = t.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+          const lower = escaped.toLowerCase();
+          return `(CONTAINS(LCASE(?title), "${lower}") || CONTAINS(LCASE(COALESCE(?desc, "")), "${lower}"))`;
+        });
+        return termFilters.length === 1 ? termFilters[0] : `(${termFilters.join(' && ')})`;
+      });
+
+    return groupFilters.length === 1 ? groupFilters[0] : `(${groupFilters.join(' || ')})`;
   }
 
   _renderResults(bindings, query) {
@@ -123,24 +183,35 @@ class GeoffSearch extends HTMLElement {
       return;
     }
 
-    this._setStatus(`${bindings.length} result${bindings.length === 1 ? '' : 's'}`);
-
-    container.innerHTML = bindings.map(row => {
-      const title = this._esc(row.get('title')?.value || 'Untitled');
-      let url = row.get('url')?.value || '#';
-      if (url === '#') {
-        const s = row.get('s')?.value || '';
-        if (s.startsWith('urn:geoff:content:')) {
-          url = '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '/').replace(/index\/$/, '');
-        }
+    const seen = new Set();
+    const results = [];
+    for (const row of bindings) {
+      const title = row.get('title')?.value || 'Untitled';
+      const s = row.get('s')?.value || '';
+      let url = '#';
+      if (s.startsWith('urn:geoff:content:')) {
+        url = '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '/').replace(/index\/$/, '');
       }
-      const desc = this._esc(row.get('desc')?.value || '');
-      const date = row.get('date')?.value || '';
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const desc = row.get('desc')?.value || '';
+      const parts = url.replace(/^\//, '').replace(/\/$/, '').split('/');
+      const context = parts.length > 1
+        ? parts.slice(0, -1).map(p => p.replace(/-/g, ' ')).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' › ')
+        : '';
+      results.push({ title, url, desc, context });
+    }
 
+    this._setStatus(`${results.length} result${results.length === 1 ? '' : 's'}`);
+
+    container.innerHTML = results.map(({ title, url, desc, context }) => {
+      const t = this._esc(title);
+      const c = this._esc(context);
+      const d = this._esc(desc);
       return `<a href="${url}" class="geoff-search-result" role="listitem">
-        <strong>${title}</strong>
-        ${date ? `<time>${date}</time>` : ''}
-        ${desc ? `<small>${desc}</small>` : ''}
+        <strong>${t}</strong>
+        ${c ? `<small class="geoff-search-context">${c}</small>` : ''}
+        ${d ? `<small>${d}</small>` : ''}
       </a>`;
     }).join('');
   }
