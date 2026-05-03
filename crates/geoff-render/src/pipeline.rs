@@ -253,7 +253,11 @@ fn parse_and_ingest(
     };
 
     let (frontmatter, rdf_fields, data_fields) = parse_frontmatter(fm_str)?;
-    let html = render_markdown(body);
+    let mut html = render_markdown(body);
+
+    if config.linked_data.rdfa_links {
+        html = geoff_content::markdown::rewrite_rdfa_links(&html, registry);
+    }
 
     let title = frontmatter
         .get("title")
@@ -320,16 +324,27 @@ fn parse_and_ingest(
         store.load_turtle_into(&sidecar_path, graph_name)?;
     }
 
-    // Build JSON-LD
-    let page_output_path = normalize_path(rel_path.with_extension("").as_ref());
-    let jsonld = build_jsonld(
-        &config.base_url,
-        &page_output_path,
-        Some(&title),
-        date.as_deref(),
-        author.as_deref(),
-        content_type.as_deref(),
-    );
+    // Build JSON-LD (rich graph-based version includes all triples)
+    let jsonld = if config.linked_data.rich_jsonld {
+        crate::jsonld::build_jsonld_from_graph(
+            store,
+            page_uri.as_str(),
+            &config.base_url,
+            &page_url,
+            &config.linked_data.default_vocab,
+            registry,
+        )
+    } else {
+        let page_output_path = normalize_path(rel_path.with_extension("").as_ref());
+        build_jsonld(
+            &config.base_url,
+            &page_output_path,
+            Some(&title),
+            date.as_deref(),
+            author.as_deref(),
+            content_type.as_deref(),
+        )
+    };
     let json_ld_str = serde_json::to_string_pretty(&jsonld)?;
 
     let rdfa_attrs = build_rdfa_attrs(

@@ -74,6 +74,7 @@ pub async fn run(
     };
     renderer.register_sparql_function(Arc::clone(&store));
     renderer.register_component_function(site_root.join("components").into());
+    renderer.register_devspaces_function(&config.devspaces);
 
     // Register RDFa template helpers
     if config.linked_data.rdfa {
@@ -227,6 +228,7 @@ pub async fn run(
                         renderer.register_sparql_function(Arc::clone(&state.store));
                         renderer
                             .register_component_function(state.site_root.join("components").into());
+                        renderer.register_devspaces_function(&state.config.devspaces);
                         if state.config.linked_data.rdfa {
                             let mappings_path = state.site_root.join("ontology/mappings.toml");
                             let mut rdfa_registry =

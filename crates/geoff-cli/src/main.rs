@@ -425,6 +425,7 @@ async fn cmd_build(
     let store_arc = Arc::new(store.clone());
     renderer.register_sparql_function(store_arc.clone());
     renderer.register_component_function(path.join("components").into());
+    renderer.register_devspaces_function(&config.devspaces);
 
     // Register RDFa template helpers if enabled
     if config.linked_data.rdfa {
