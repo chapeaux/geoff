@@ -1,0 +1,11 @@
+{
+  "color-critical": {
+    "$type": "color",
+    "text": { "$value": "#e2e8f0" },
+    "text-light": { "$value": "#a0aec0" },
+    "background": { "$value": "#1a202c" },
+    "background-alt": { "$value": "#2d3748" },
+    "border": { "$value": "#4a5568" },
+    "primary": { "$value": "#63b3ed" }
+  }
+}

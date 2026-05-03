@@ -1,0 +1,17 @@
+[package]
+name = "geoff-theme"
+version = "0.2.5"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Design token parsing, CSS generation, and theme inheritance for Geoff"
+keywords = ["design-tokens", "css", "theming", "dtcg"]
+categories = ["web-programming"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+camino = "1"
+
+[dev-dependencies]

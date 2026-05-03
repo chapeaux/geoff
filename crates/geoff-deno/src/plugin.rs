@@ -116,9 +116,25 @@ impl Plugin for DenoPlugin {
 
     async fn on_graph_updated(
         &self,
-        _ctx: &mut GraphContext<'_>,
+        ctx: &mut GraphContext<'_>,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.rpc_call(protocol::METHOD_GRAPH_UPDATED, None).await?;
+        let result = self.rpc_call(protocol::METHOD_GRAPH_UPDATED, None).await?;
+
+        if let Some(val) = result {
+            let graph_result: protocol::GraphUpdatedResult = serde_json::from_value(val)?;
+            for triple in &graph_result.add_triples {
+                let graph = triple.graph.as_deref().unwrap_or("urn:geoff:plugin");
+                ctx.store
+                    .insert_triple_into(
+                        &triple.subject,
+                        &triple.predicate,
+                        &geoff_core::types::ObjectValue::Literal(triple.object.clone()),
+                        graph,
+                    )
+                    .map_err(|e| format!("Failed to insert triple: {e}"))?;
+            }
+        }
+
         Ok(())
     }
 
@@ -165,9 +181,34 @@ impl Plugin for DenoPlugin {
 
     async fn on_build_complete(
         &self,
-        _ctx: &mut OutputContext<'_>,
+        ctx: &mut OutputContext<'_>,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.rpc_call(protocol::METHOD_BUILD_COMPLETE, None).await?;
+        let result = self.rpc_call(protocol::METHOD_BUILD_COMPLETE, None).await?;
+
+        if let Some(val) = result {
+            let build_result: protocol::BuildCompleteResult = serde_json::from_value(val)?;
+
+            for file in &build_result.add_files {
+                let out_path = ctx.output_dir.join(&file.path);
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&out_path, &file.content)?;
+            }
+
+            for triple in &build_result.add_triples {
+                let graph = triple.graph.as_deref().unwrap_or("urn:geoff:plugin");
+                ctx.store
+                    .insert_triple_into(
+                        &triple.subject,
+                        &triple.predicate,
+                        &geoff_core::types::ObjectValue::Literal(triple.object.clone()),
+                        graph,
+                    )
+                    .map_err(|e| format!("Failed to insert triple: {e}"))?;
+            }
+        }
+
         Ok(())
     }
 

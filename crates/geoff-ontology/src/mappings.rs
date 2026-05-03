@@ -30,6 +30,8 @@ pub struct MappingRegistry {
     pub types: HashMap<String, String>,
     #[serde(default)]
     pub properties: HashMap<String, String>,
+    #[serde(skip)]
+    pub extra_prefixes: HashMap<String, String>,
 }
 
 impl Default for MappingRegistry {
@@ -43,6 +45,7 @@ impl MappingRegistry {
         Self {
             types: HashMap::new(),
             properties: HashMap::new(),
+            extra_prefixes: HashMap::new(),
         }
     }
 
@@ -94,10 +97,33 @@ impl MappingRegistry {
         self.properties.insert(name.to_string(), iri.to_string());
     }
 
+    /// Merge additional namespace prefixes (from config) into this registry.
+    pub fn add_prefixes(&mut self, prefixes: HashMap<String, String>) {
+        self.extra_prefixes.extend(prefixes);
+    }
+
+    /// Returns all active prefixes (built-in + user-declared).
+    pub fn all_prefixes(&self) -> Vec<(&str, &str)> {
+        let mut result: Vec<(&str, &str)> = KNOWN_PREFIXES
+            .iter()
+            .map(|&(p, ns)| (p, ns))
+            .collect();
+        for (p, ns) in &self.extra_prefixes {
+            result.push((p.as_str(), ns.as_str()));
+        }
+        result
+    }
+
     /// Compact an IRI to prefixed form (e.g. "https://schema.org/BlogPosting" → "schema:BlogPosting").
-    pub fn compact_iri(iri: &str) -> String {
+    /// Checks both built-in and user-declared prefixes.
+    pub fn compact_iri(&self, iri: &str) -> String {
         for &(prefix, namespace) in KNOWN_PREFIXES {
             if let Some(local) = iri.strip_prefix(namespace) {
+                return format!("{prefix}:{local}");
+            }
+        }
+        for (prefix, namespace) in &self.extra_prefixes {
+            if let Some(local) = iri.strip_prefix(namespace.as_str()) {
                 return format!("{prefix}:{local}");
             }
         }
@@ -105,7 +131,22 @@ impl MappingRegistry {
     }
 
     /// Expand a prefixed IRI to full form (e.g. "schema:BlogPosting" → "https://schema.org/BlogPosting").
-    pub fn expand_iri(prefixed: &str) -> Option<String> {
+    /// Checks both built-in and user-declared prefixes.
+    pub fn expand_iri(&self, prefixed: &str) -> Option<String> {
+        let (prefix, local) = prefixed.split_once(':')?;
+        for &(p, namespace) in KNOWN_PREFIXES {
+            if p == prefix {
+                return Some(format!("{namespace}{local}"));
+            }
+        }
+        if let Some(namespace) = self.extra_prefixes.get(prefix) {
+            return Some(format!("{namespace}{local}"));
+        }
+        None
+    }
+
+    /// Expand a prefixed IRI using only the built-in prefixes (static convenience method).
+    pub fn expand_iri_builtin(prefixed: &str) -> Option<String> {
         let (prefix, local) = prefixed.split_once(':')?;
         for &(p, namespace) in KNOWN_PREFIXES {
             if p == prefix {
@@ -165,29 +206,60 @@ mod tests {
 
     #[test]
     fn compact_iri_known_prefix() {
+        let registry = MappingRegistry::new();
         assert_eq!(
-            MappingRegistry::compact_iri("https://schema.org/BlogPosting"),
+            registry.compact_iri("https://schema.org/BlogPosting"),
             "schema:BlogPosting"
         );
         assert_eq!(
-            MappingRegistry::compact_iri("http://purl.org/dc/terms/title"),
+            registry.compact_iri("http://purl.org/dc/terms/title"),
             "dc:title"
         );
     }
 
     #[test]
     fn compact_iri_unknown_prefix() {
+        let registry = MappingRegistry::new();
         assert_eq!(
-            MappingRegistry::compact_iri("http://example.org/Foo"),
+            registry.compact_iri("http://example.org/Foo"),
             "http://example.org/Foo"
         );
     }
 
     #[test]
     fn expand_iri_roundtrip() {
+        let registry = MappingRegistry::new();
         let iri = "https://schema.org/BlogPosting";
-        let compact = MappingRegistry::compact_iri(iri);
-        let expanded = MappingRegistry::expand_iri(&compact).unwrap();
+        let compact = registry.compact_iri(iri);
+        let expanded = registry.expand_iri(&compact).unwrap();
         assert_eq!(expanded, iri);
+    }
+
+    #[test]
+    fn extra_prefixes_expand_and_compact() {
+        let mut registry = MappingRegistry::new();
+        registry.add_prefixes(HashMap::from([
+            ("skos".to_string(), "http://www.w3.org/2004/02/skos/core#".to_string()),
+            ("org".to_string(), "http://www.w3.org/ns/org#".to_string()),
+        ]));
+
+        let expanded = registry.expand_iri("skos:broader").unwrap();
+        assert_eq!(expanded, "http://www.w3.org/2004/02/skos/core#broader");
+
+        let compacted = registry.compact_iri("http://www.w3.org/ns/org#member");
+        assert_eq!(compacted, "org:member");
+
+        assert!(registry.expand_iri("unknown:foo").is_none());
+    }
+
+    #[test]
+    fn all_prefixes_includes_builtins_and_extras() {
+        let mut registry = MappingRegistry::new();
+        registry.add_prefixes(HashMap::from([
+            ("skos".to_string(), "http://www.w3.org/2004/02/skos/core#".to_string()),
+        ]));
+        let prefixes = registry.all_prefixes();
+        assert!(prefixes.iter().any(|(p, _)| *p == "schema"));
+        assert!(prefixes.iter().any(|(p, _)| *p == "skos"));
     }
 }

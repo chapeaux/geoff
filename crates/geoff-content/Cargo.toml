@@ -12,6 +12,7 @@ categories = ["parsing", "text-processing"]
 [dependencies]
 geoff-core = { version = "0.2.5", path = "../geoff-core" }
 geoff-graph = { version = "0.2.5", path = "../geoff-graph" }
+geoff-ontology = { version = "0.2.5", path = "../geoff-ontology" }
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

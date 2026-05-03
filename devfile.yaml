@@ -1,0 +1,62 @@
+schemaVersion: 2.2.0
+metadata:
+  name: geoff
+  version: 0.1.0
+  description: Geoff static site generator development environment
+components:
+  - name: geoff
+    container:
+      image: quay.io/chapeaux/geoff-devtools:latest
+      memoryLimit: 2Gi
+      mountSources: true
+      endpoints:
+        - name: site-preview
+          targetPort: 3000
+          exposure: public
+          protocol: https
+        - name: theme-editor
+          targetPort: 3001
+          exposure: public
+          protocol: https
+commands:
+  - id: serve
+    exec:
+      component: geoff
+      commandLine: geoff serve --port 3000
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: run
+        isDefault: true
+  - id: build
+    exec:
+      component: geoff
+      commandLine: geoff build
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: build
+        isDefault: true
+  - id: new-post
+    exec:
+      component: geoff
+      commandLine: geoff new post
+      workingDir: ${PROJECT_SOURCE}
+  - id: theme-preview
+    exec:
+      component: geoff
+      commandLine: geoff theme preview --port 3001
+      workingDir: ${PROJECT_SOURCE}
+  - id: validate
+    exec:
+      component: geoff
+      commandLine: geoff validate
+      workingDir: ${PROJECT_SOURCE}
+  - id: publish-github
+    exec:
+      component: geoff
+      commandLine: geoff publish github
+      workingDir: ${PROJECT_SOURCE}
+  - id: publish-download
+    exec:
+      component: geoff
+      commandLine: geoff publish download
+      workingDir: ${PROJECT_SOURCE}

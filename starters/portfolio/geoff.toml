@@ -3,3 +3,10 @@ title = "My Portfolio"
 content_dir = "content"
 output_dir = "dist"
 template_dir = "templates"
+
+[theme]
+name = "portfolio"
+base = "default"
+
+[theme.modes]
+dark = "tokens.dark.json"

@@ -21,13 +21,16 @@ class GeoffSearch extends HTMLElement {
   }
 
   connectedCallback() {
-    this.innerHTML = `
-      <form role="search" class="geoff-search-form">
-        <input type="search" placeholder="Search…" aria-label="Search" />
-        <div class="geoff-search-status" aria-live="polite"></div>
-      </form>
-      <div class="geoff-search-results" role="list"></div>
-    `;
+    if (typeof window === 'undefined') return;
+    if (!this.querySelector('input')) {
+      this.innerHTML = `
+        <form role="search" class="geoff-search-form">
+          <input type="search" placeholder="Search…" aria-label="Search" />
+          <div class="geoff-search-status" aria-live="polite"></div>
+        </form>
+        <div class="geoff-search-results" role="list"></div>
+      `;
+    }
 
     const input = this.querySelector('input');
     let debounce;
@@ -134,6 +137,7 @@ class GeoffSearch extends HTMLElement {
   }
 
   _esc(str) {
+    if (typeof document === 'undefined') return str.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;

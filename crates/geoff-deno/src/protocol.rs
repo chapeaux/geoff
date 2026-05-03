@@ -104,6 +104,39 @@ pub struct ContentParsedResult {
     pub page: geoff_plugin::context::PageData,
 }
 
+/// A single triple to insert into the RDF graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TripleSpec {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    #[serde(default)]
+    pub graph: Option<String>,
+}
+
+/// Result returned from `on_graph_updated`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphUpdatedResult {
+    #[serde(default, rename = "addTriples")]
+    pub add_triples: Vec<TripleSpec>,
+}
+
+/// Result returned from `on_build_complete`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildCompleteResult {
+    #[serde(default, rename = "addFiles")]
+    pub add_files: Vec<AddFileSpec>,
+    #[serde(default, rename = "addTriples")]
+    pub add_triples: Vec<TripleSpec>,
+}
+
+/// A file to add to the output directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddFileSpec {
+    pub path: String,
+    pub content: String,
+}
+
 /// Parameters sent with the `on_validation_complete` call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationParams {

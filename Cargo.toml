@@ -9,6 +9,7 @@ members = [
     "crates/geoff-ontology",
     "crates/geoff-plugin",
     "crates/geoff-deno",
+    "crates/geoff-theme",
     "plugins/geoff-reading-time",
 ]
 resolver = "3"

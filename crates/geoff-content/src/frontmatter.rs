@@ -47,10 +47,14 @@ pub fn split_frontmatter(
     Ok((frontmatter, body))
 }
 
-/// Parse TOML frontmatter, extracting standard fields and any `[rdf.custom]` entries.
+/// Parse TOML frontmatter, extracting standard fields, `[rdf.custom]` entries,
+/// and `[data]` entries for linked data with friendly names.
 pub fn parse_frontmatter(
     toml_str: &str,
-) -> std::result::Result<(toml::Value, HashMap<String, JsonValue>), Box<dyn std::error::Error>> {
+) -> std::result::Result<
+    (toml::Value, HashMap<String, JsonValue>, HashMap<String, JsonValue>),
+    Box<dyn std::error::Error>,
+> {
     let value: toml::Value = toml::from_str(toml_str)?;
 
     let mut rdf_fields = HashMap::new();
@@ -65,10 +69,17 @@ pub fn parse_frontmatter(
         }
     }
 
-    Ok((value, rdf_fields))
+    let mut data_fields = HashMap::new();
+    if let Some(data_table) = value.get("data").and_then(|d| d.as_table()) {
+        for (k, v) in data_table {
+            data_fields.insert(k.clone(), toml_to_json(v));
+        }
+    }
+
+    Ok((value, rdf_fields, data_fields))
 }
 
-fn toml_to_json(v: &toml::Value) -> JsonValue {
+pub fn toml_to_json(v: &toml::Value) -> JsonValue {
     match v {
         toml::Value::String(s) => JsonValue::String(s.clone()),
         toml::Value::Integer(i) => JsonValue::Number((*i).into()),
@@ -121,8 +132,26 @@ mod tests {
             [rdf.custom]
             "schema:wordCount" = 1500
         "#;
-        let (value, rdf) = parse_frontmatter(toml_str).unwrap();
+        let (value, rdf, data) = parse_frontmatter(toml_str).unwrap();
         assert_eq!(value.get("title").unwrap().as_str(), Some("Test"));
         assert_eq!(rdf["schema:wordCount"], JsonValue::Number(1500.into()));
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn parse_frontmatter_with_data_section() {
+        let toml_str = r#"
+            title = "Test"
+            [data]
+            wordCount = 1500
+            category = "tutorial"
+            featured = true
+        "#;
+        let (value, rdf, data) = parse_frontmatter(toml_str).unwrap();
+        assert_eq!(value.get("title").unwrap().as_str(), Some("Test"));
+        assert!(rdf.is_empty());
+        assert_eq!(data["wordCount"], JsonValue::Number(1500.into()));
+        assert_eq!(data["category"], JsonValue::String("tutorial".into()));
+        assert_eq!(data["featured"], JsonValue::Bool(true));
     }
 }

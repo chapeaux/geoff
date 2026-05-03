@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use camino::Utf8Path;
-use geoff_content::frontmatter::{parse_frontmatter, split_frontmatter};
+use geoff_content::frontmatter::{parse_frontmatter, split_frontmatter, toml_to_json};
 use geoff_content::markdown::render_markdown;
 use geoff_content::scanner::{scan_content_dir, scan_data_dir, sidecar_ttl_path};
 use geoff_core::cache::{BuildCache, hash_file};
@@ -10,6 +10,7 @@ use geoff_core::config::SiteConfig;
 use geoff_core::types::{ObjectValue, PageUri, normalize_path, xsd};
 use geoff_graph::store::ContentStore;
 use geoff_ontology::mappings::MappingRegistry;
+use geoff_theme::TokenValue;
 use rayon::prelude::*;
 use serde_json::Value as JsonValue;
 
@@ -46,16 +47,21 @@ pub fn build_site(
 }
 
 /// Intermediate parsed page data, ready for parallel rendering.
-struct ParsedPage {
-    output_path: String,
-    content_html: String,
-    json_ld_str: String,
-    template: String,
-    title: String,
-    date: Option<String>,
-    author: Option<String>,
-    description: Option<String>,
-    tags: Option<Vec<String>>,
+pub struct ParsedPage {
+    pub output_path: String,
+    pub page_url: String,
+    pub page_uri: String,
+    pub rdfa_attrs: String,
+    pub content_html: String,
+    pub json_ld_str: String,
+    pub template: String,
+    pub title: String,
+    pub date: Option<String>,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub frontmatter: serde_json::Value,
+    pub extra_vars: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Run the build pipeline with optional incremental support.
@@ -68,13 +74,34 @@ pub fn build_site_incremental(
     renderer: &SiteRenderer,
     cache: Option<&BuildCache>,
 ) -> std::result::Result<(Vec<BuiltPage>, BuildStats), Box<dyn std::error::Error>> {
+    let (to_render, stats, page_index) = ingest_content(site_root, config, store, cache)?;
+    renderer.set_page_index(page_index);
+    let pages = render_pages(&to_render, config, renderer, stats.skipped)?;
+    let built = pages.len();
+    Ok((pages, BuildStats { built, ..stats }))
+}
+
+/// Intermediate result from content ingestion, ready for a hook point before rendering.
+pub struct IngestResult {
+    pub to_render: Vec<ParsedPage>,
+    pub stats: BuildStats,
+}
+
+/// Phase 1: Scan, parse, and ingest all content into the RDF graph.
+/// Returns parsed pages ready for rendering, build statistics, and a page index
+/// containing metadata for ALL pages (including those skipped by incremental builds).
+/// Call this, then run plugin hooks (e.g. on_graph_updated), then call render_pages.
+pub fn ingest_content(
+    site_root: &Utf8Path,
+    config: &SiteConfig,
+    store: &ContentStore,
+    cache: Option<&BuildCache>,
+) -> std::result::Result<(Vec<ParsedPage>, BuildStats, Vec<serde_json::Value>), Box<dyn std::error::Error>> {
     let content_dir = site_root.join(&config.content_dir);
 
-    // Load mapping registry from ontology/mappings.toml
     let mappings_path = site_root.join("ontology/mappings.toml");
     let registry = MappingRegistry::load(&mappings_path)?;
 
-    // Load pure RDF data files from content/data/ directory
     let data_dir = content_dir.join("data");
     for ttl_file in scan_data_dir(&data_dir)? {
         store.load_turtle(&ttl_file)?;
@@ -86,7 +113,6 @@ pub fn build_site_incremental(
         ..Default::default()
     };
 
-    // Check if templates changed — if so, rebuild everything
     let templates_changed = if let Some(c) = cache {
         let template_dir = site_root.join(&config.template_dir);
         let current_hash = geoff_core::cache::hash_directory(&template_dir)?;
@@ -95,15 +121,12 @@ pub fn build_site_incremental(
         true
     };
 
-    // Find templates that use sparql() — these must always be re-rendered
-    // because their output depends on graph state, not just their own source.
     let sparql_templates = find_sparql_templates(&site_root.join(&config.template_dir))?;
 
-    // Phase 1: Sequential parse + graph ingestion
     let mut to_render: Vec<ParsedPage> = Vec::new();
+    let mut page_index: Vec<serde_json::Value> = Vec::new();
 
     for file_path in &files {
-        // Check cache for incremental builds
         if !templates_changed
             && let Some(c) = cache
             && let Ok(current_hash) = hash_file(file_path)
@@ -117,7 +140,6 @@ pub fn build_site_incremental(
                 &current_hash,
             )
         {
-            // File unchanged — but if its template uses SPARQL, always rebuild
             if !sparql_templates.is_empty()
                 && let Ok(template) = read_frontmatter_template(file_path)
                 && sparql_templates.contains(&template)
@@ -125,40 +147,64 @@ pub fn build_site_incremental(
                 if let Some(parsed) =
                     parse_and_ingest(file_path, &content_dir, config, store, &registry)?
                 {
+                    page_index.push(build_page_entry(&parsed));
                     to_render.push(parsed);
                 }
                 continue;
             }
 
-            // Still need to ingest triples for unchanged files
-            // so SPARQL queries see all content
-            ingest_triples_only(file_path, &content_dir, store, &registry)?;
+            if let Some(entry) =
+                ingest_triples_only(file_path, &content_dir, config, store, &registry)?
+            {
+                page_index.push(entry);
+            }
             stats.skipped += 1;
             continue;
         }
 
         if let Some(parsed) = parse_and_ingest(file_path, &content_dir, config, store, &registry)? {
+            page_index.push(build_page_entry(&parsed));
             to_render.push(parsed);
         }
     }
 
-    // Phase 2: Parallel rendering
+    Ok((to_render, stats, page_index))
+}
+
+/// Phase 2: Render parsed pages in parallel using Rayon.
+/// Call this after ingest_content and any plugin hooks.
+pub fn render_pages(
+    to_render: &[ParsedPage],
+    config: &SiteConfig,
+    renderer: &SiteRenderer,
+    skipped: usize,
+) -> std::result::Result<Vec<BuiltPage>, Box<dyn std::error::Error>> {
     let render_count = AtomicUsize::new(0);
     let total_to_render = to_render.len();
 
     let results: Vec<std::result::Result<BuiltPage, String>> = to_render
         .par_iter()
         .map(|parsed| {
-            let ctx = build_page_context(&PageContext {
+            let mut ctx = build_page_context(&PageContext {
                 title: &parsed.title,
                 content_html: &parsed.content_html,
                 json_ld: &parsed.json_ld_str,
                 site_title: &config.title,
+                page_url: &parsed.page_url,
+                page_uri: &parsed.page_uri,
+                rdfa_attrs: &parsed.rdfa_attrs,
                 date: parsed.date.as_deref(),
                 author: parsed.author.as_deref(),
                 description: parsed.description.as_deref(),
                 tags: parsed.tags.as_deref(),
             });
+
+            ctx.insert("frontmatter", &parsed.frontmatter);
+
+            // Inject plugin-provided extra variables into the template context
+            for (k, v) in &parsed.extra_vars {
+                ctx.insert(k, v);
+            }
 
             let rendered = renderer
                 .render_with_context(&parsed.template, &ctx)
@@ -177,21 +223,15 @@ pub fn build_site_incremental(
         .collect();
 
     if total_to_render > 1 {
-        eprintln!(); // newline after progress
+        eprintln!();
     }
 
     let mut pages = Vec::with_capacity(results.len());
     for result in results {
-        match result {
-            Ok(page) => {
-                stats.built += 1;
-                pages.push(page);
-            }
-            Err(e) => return Err(e.into()),
-        }
+        pages.push(result.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?);
     }
 
-    Ok((pages, stats))
+    Ok(pages)
 }
 
 /// Parse a content file, ingest its triples, and return data ready for rendering.
@@ -209,7 +249,7 @@ fn parse_and_ingest(
         Err(_) => return Ok(None),
     };
 
-    let (frontmatter, rdf_fields) = parse_frontmatter(fm_str)?;
+    let (frontmatter, rdf_fields, data_fields) = parse_frontmatter(fm_str)?;
     let html = render_markdown(body);
 
     let title = frontmatter
@@ -245,7 +285,8 @@ fn parse_and_ingest(
     });
 
     let rel_path = file_path.strip_prefix(content_dir).unwrap_or(file_path);
-    let output_name = normalize_path(rel_path.with_extension("html").as_ref());
+    let raw_output = normalize_path(rel_path.with_extension("html").as_ref());
+    let output_name = apply_url_style(&raw_output, &config.build.url_style);
     let page_uri = PageUri::from_path(rel_path.as_str());
     let graph_name = page_uri.as_str();
 
@@ -267,7 +308,10 @@ fn parse_and_ingest(
     })?;
 
     // Insert [rdf.custom] fields as triples
-    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields)?;
+    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields, registry)?;
+
+    // Insert [data] fields as triples (friendly names resolved via registry)
+    insert_data_triples(store, &page_uri, graph_name, &data_fields, registry)?;
 
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
@@ -285,8 +329,18 @@ fn parse_and_ingest(
     );
     let json_ld_str = serde_json::to_string_pretty(&jsonld)?;
 
+    let rdfa_attrs = build_rdfa_attrs(
+        content_type.as_deref(),
+        &page_url,
+        &config.linked_data.default_vocab,
+        registry,
+    );
+
     Ok(Some(ParsedPage {
         output_path: output_name,
+        page_url,
+        page_uri: page_uri.as_str().to_string(),
+        rdfa_attrs,
         content_html: html,
         json_ld_str,
         template,
@@ -295,25 +349,30 @@ fn parse_and_ingest(
         author,
         description,
         tags,
+        frontmatter: toml_to_json(&frontmatter),
+        extra_vars: std::collections::HashMap::new(),
     }))
 }
 
 /// Ingest triples for a file without rendering it (for incremental builds).
+/// Returns a page index entry if the file was successfully parsed.
 fn ingest_triples_only(
     file_path: &Utf8Path,
     content_dir: &Utf8Path,
+    config: &SiteConfig,
     store: &ContentStore,
     registry: &MappingRegistry,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<Option<serde_json::Value>, Box<dyn std::error::Error>> {
     let raw = std::fs::read_to_string(file_path)?;
     let (fm_str, _body) = match split_frontmatter(&raw) {
         Ok(pair) => pair,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(None),
     };
-    let (frontmatter, rdf_fields) = parse_frontmatter(fm_str)?;
+    let (frontmatter, rdf_fields, data_fields) = parse_frontmatter(fm_str)?;
 
     let rel_path = file_path.strip_prefix(content_dir).unwrap_or(file_path);
-    let output_name = normalize_path(rel_path.with_extension("html").as_ref());
+    let raw_output = normalize_path(rel_path.with_extension("html").as_ref());
+    let output_name = apply_url_style(&raw_output, &config.build.url_style);
     let page_uri = PageUri::from_path(rel_path.as_str());
     let graph_name = page_uri.as_str();
     let date_str = frontmatter.get("date").map(toml_value_to_string);
@@ -333,25 +392,28 @@ fn ingest_triples_only(
     })?;
 
     // Insert [rdf.custom] fields as triples
-    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields)?;
+    insert_custom_triples(store, &page_uri, graph_name, &rdf_fields, registry)?;
+
+    // Insert [data] fields as triples (friendly names resolved via registry)
+    insert_data_triples(store, &page_uri, graph_name, &data_fields, registry)?;
 
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
     }
 
-    Ok(())
+    Ok(Some(build_page_entry_from_frontmatter(&frontmatter, &page_url)))
 }
 
 /// Default type mappings used when the mapping registry has no entry.
 fn default_type_iri(content_type: &str) -> &str {
     match content_type {
-        "Blog Post" | "BlogPosting" => "http://schema.org/BlogPosting",
-        "Article" => "http://schema.org/Article",
-        "How-To Guide" | "HowTo" => "http://schema.org/HowTo",
-        "FAQ Page" | "FAQPage" => "http://schema.org/FAQPage",
-        "Event" => "http://schema.org/Event",
-        "Web Page" | "WebPage" => "http://schema.org/WebPage",
-        _ => "http://schema.org/WebPage",
+        "Blog Post" | "BlogPosting" => "https://schema.org/BlogPosting",
+        "Article" => "https://schema.org/Article",
+        "How-To Guide" | "HowTo" => "https://schema.org/HowTo",
+        "FAQ Page" | "FAQPage" => "https://schema.org/FAQPage",
+        "Event" => "https://schema.org/Event",
+        "Web Page" | "WebPage" => "https://schema.org/WebPage",
+        _ => "https://schema.org/WebPage",
     }
 }
 
@@ -377,10 +439,98 @@ fn toml_value_to_string(v: &toml::Value) -> String {
     }
 }
 
+/// Build RDFa attributes for the page container element.
+/// Returns a string like `vocab="https://schema.org/" typeof="BlogPosting" resource="/blog/welcome/"`.
+fn build_rdfa_attrs(
+    content_type: Option<&str>,
+    page_url: &str,
+    default_vocab: &str,
+    registry: &MappingRegistry,
+) -> String {
+    let mut attrs = format!("vocab=\"{}\"", default_vocab);
+
+    if let Some(ct) = content_type {
+        let type_iri = registry
+            .resolve_type(ct)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| default_type_iri(ct).to_string());
+
+        // Compact for display: strip the default vocab prefix if possible
+        let type_name = if let Some(local) = type_iri.strip_prefix(default_vocab) {
+            local.to_string()
+        } else {
+            registry.compact_iri(&type_iri)
+        };
+        attrs.push_str(&format!(" typeof=\"{type_name}\""));
+    }
+
+    attrs.push_str(&format!(" resource=\"{}\"", page_url));
+    attrs
+}
+
+/// Build a page index entry from a ParsedPage.
+fn build_page_entry(parsed: &ParsedPage) -> serde_json::Value {
+    let mut entry = match &parsed.frontmatter {
+        serde_json::Value::Object(m) => serde_json::Value::Object(m.clone()),
+        _ => serde_json::Value::Object(serde_json::Map::new()),
+    };
+    let obj = entry.as_object_mut().unwrap();
+    obj.insert("url".to_string(), serde_json::json!(parsed.page_url));
+    obj.insert("title".to_string(), serde_json::json!(parsed.title));
+    if let Some(d) = &parsed.date {
+        obj.insert("date".to_string(), serde_json::json!(d));
+    }
+    if let Some(a) = &parsed.author {
+        obj.insert("author".to_string(), serde_json::json!(a));
+    }
+    if let Some(desc) = &parsed.description {
+        obj.insert("description".to_string(), serde_json::json!(desc));
+    }
+    if let Some(t) = &parsed.tags {
+        obj.insert("tags".to_string(), serde_json::json!(t));
+    }
+    entry
+}
+
+/// Build a page index entry from raw frontmatter (for incremental builds where
+/// the page is not being rendered but still needs to appear in pages()/tree()).
+fn build_page_entry_from_frontmatter(
+    frontmatter: &toml::Value,
+    page_url: &str,
+) -> serde_json::Value {
+    let mut entry = match toml_to_json(frontmatter) {
+        serde_json::Value::Object(m) => serde_json::Value::Object(m),
+        _ => serde_json::Value::Object(serde_json::Map::new()),
+    };
+    let obj = entry.as_object_mut().unwrap();
+    obj.insert("url".to_string(), serde_json::json!(page_url));
+    if !obj.contains_key("title") {
+        obj.insert("title".to_string(), serde_json::json!("Untitled"));
+    }
+    entry
+}
+
 /// Convert an output file path to a URL path.
 /// e.g. "blog/2026-03-30-welcome.html" → "/blog/2026-03-30-welcome.html"
 ///      "blog/index.html" → "/blog/"
 ///      "index.html" → "/"
+/// Convert a file path to directory-style output: `about.html` → `about/index.html`.
+/// Leaves `index.html` and paths already ending in `/index.html` unchanged.
+fn apply_url_style(output_path: &str, style: &geoff_core::config::UrlStyle) -> String {
+    match style {
+        geoff_core::config::UrlStyle::File => output_path.to_string(),
+        geoff_core::config::UrlStyle::Directory => {
+            if output_path == "index.html" || output_path.ends_with("/index.html") {
+                output_path.to_string()
+            } else if let Some(stem) = output_path.strip_suffix(".html") {
+                format!("{stem}/index.html")
+            } else {
+                output_path.to_string()
+            }
+        }
+    }
+}
+
 fn output_path_to_url(output_path: &str) -> String {
     if output_path == "index.html" {
         "/".to_string()
@@ -398,7 +548,7 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
     if let Some(t) = p.title {
         store.insert_triple_into(
             page_uri.as_str(),
-            "http://schema.org/name",
+            "https://schema.org/name",
             &ObjectValue::Literal(t.to_string()),
             graph_name,
         )?;
@@ -412,7 +562,7 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
         };
         store.insert_triple_into(
             page_uri.as_str(),
-            "http://schema.org/datePublished",
+            "https://schema.org/datePublished",
             &ObjectValue::TypedLiteral {
                 value: d.to_string(),
                 datatype: datatype.to_string(),
@@ -423,7 +573,7 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
     if let Some(a) = p.author {
         store.insert_triple_into(
             page_uri.as_str(),
-            "http://schema.org/author",
+            "https://schema.org/author",
             &ObjectValue::Literal(a.to_string()),
             graph_name,
         )?;
@@ -431,7 +581,7 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
     if let Some(desc) = p.description {
         store.insert_triple_into(
             page_uri.as_str(),
-            "http://schema.org/description",
+            "https://schema.org/description",
             &ObjectValue::Literal(desc.to_string()),
             graph_name,
         )?;
@@ -453,7 +603,7 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
     if let Some(url) = p.url {
         store.insert_triple_into(
             page_uri.as_str(),
-            "http://schema.org/url",
+            "https://schema.org/url",
             &ObjectValue::Literal(url.to_string()),
             graph_name,
         )?;
@@ -469,10 +619,33 @@ fn insert_custom_triples(
     page_uri: &PageUri,
     graph_name: &str,
     rdf_fields: &HashMap<String, JsonValue>,
+    registry: &MappingRegistry,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (key, value) in rdf_fields {
-        // Expand prefixed IRIs (e.g. "geoff:stage" → "urn:geoff:ontology:stage")
-        let predicate = MappingRegistry::expand_iri(key).unwrap_or_else(|| key.clone());
+        let predicate = registry.expand_iri(key).unwrap_or_else(|| key.clone());
+        let obj = json_to_object_value(value);
+        store.insert_triple_into(page_uri.as_str(), &predicate, &obj, graph_name)?;
+    }
+    Ok(())
+}
+
+/// Insert `[data]` fields as triples, resolving friendly names via the mapping registry.
+/// Resolution chain: registry.resolve_property() -> registry.expand_iri() -> urn:geoff:meta:{key}
+fn insert_data_triples(
+    store: &ContentStore,
+    page_uri: &PageUri,
+    graph_name: &str,
+    data_fields: &HashMap<String, JsonValue>,
+    registry: &MappingRegistry,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    for (key, value) in data_fields {
+        let predicate = if let Some(iri) = registry.resolve_property(key) {
+            iri.to_string()
+        } else if let Some(expanded) = registry.expand_iri(key) {
+            expanded
+        } else {
+            format!("urn:geoff:meta:{key}")
+        };
         let obj = json_to_object_value(value);
         store.insert_triple_into(page_uri.as_str(), &predicate, &obj, graph_name)?;
     }
@@ -528,6 +701,178 @@ pub fn build_to_memory(
     Ok(map)
 }
 
+/// Result of loading and processing a theme's design tokens.
+pub struct ThemeResult {
+    /// Full CSS custom properties (non-critical, deferred).
+    pub css: String,
+    /// Critical CSS custom properties.
+    pub critical_css: String,
+    /// The merged DTCG token JSON (after base merge, before CSS conversion).
+    pub merged_json: serde_json::Value,
+}
+
+/// Load theme tokens, resolve references, generate CSS, register the theme
+/// function on the renderer, and insert tokens into the RDF graph.
+///
+/// Returns the generated CSS strings for writing to output.
+pub fn load_and_register_theme(
+    site_root: &Utf8Path,
+    config: &SiteConfig,
+    renderer: &mut SiteRenderer,
+    store: &ContentStore,
+) -> std::result::Result<Option<ThemeResult>, Box<dyn std::error::Error>> {
+    let theme_name = match &config.theme.name {
+        Some(name) => name.clone(),
+        None => return Ok(None),
+    };
+
+    let theme_dir = site_root.join("themes").join(&theme_name);
+    let tokens_path = theme_dir.join("tokens.json");
+
+    if !tokens_path.exists() {
+        return Ok(None);
+    }
+
+    // 1. Read theme tokens
+    let theme_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&tokens_path)?)?;
+
+    // 2. If base theme is set, read and merge base tokens
+    let merged_json = if let Some(base_name) = &config.theme.base {
+        let base_tokens_path = site_root.join("themes").join(base_name).join("tokens.json");
+        if base_tokens_path.exists() {
+            let base_json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&base_tokens_path)?)?;
+            geoff_theme::merge_tokens(&base_json, &theme_json)
+        } else {
+            theme_json
+        }
+    } else {
+        theme_json
+    };
+
+    // 3. Parse and flatten tokens
+    let tokens = geoff_theme::DesignTokens::from_json(&merged_json.to_string())?;
+    let mut flat = tokens.flatten();
+    geoff_theme::resolve_references(&mut flat);
+
+    // 4. Handle dark mode tokens if configured
+    let dark_flat = if let Some(dark_file) = &config.theme.modes.dark {
+        let dark_path = theme_dir.join(dark_file);
+        if dark_path.exists() {
+            let dark_tokens =
+                geoff_theme::DesignTokens::from_file(camino::Utf8Path::new(dark_path.as_str()))?;
+            let mut dark_flat = dark_tokens.flatten();
+            geoff_theme::resolve_references(&mut dark_flat);
+            Some(dark_flat)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 5. Generate CSS
+    let prefix = config.theme.prefix.as_deref();
+    let css = geoff_theme::generate_css_with_prefix(&flat, dark_flat.as_ref(), false, prefix);
+    let critical_css =
+        geoff_theme::generate_css_with_prefix(&flat, dark_flat.as_ref(), true, prefix);
+
+    // 6. Register the theme_css function on the renderer
+    renderer.register_theme_function(css.clone(), critical_css.clone());
+
+    // 7. Insert tokens as triples into the RDF graph
+    insert_tokens_into_graph(store, &flat)?;
+
+    Ok(Some(ThemeResult {
+        css,
+        critical_css,
+        merged_json: merged_json.clone(),
+    }))
+}
+
+/// Insert flattened design tokens into the RDF graph as triples.
+///
+/// For each token, three triples are inserted:
+/// - `<urn:geoff:design-token:{path}> <urn:geoff:design-token:type> "{token_type}"`
+/// - `<urn:geoff:design-token:{path}> <urn:geoff:design-token:value> "{css_value}"`
+/// - `<urn:geoff:design-token:{path}> <urn:geoff:design-token:cssVariable> "--{var-name}"`
+fn insert_tokens_into_graph(
+    store: &ContentStore,
+    tokens: &std::collections::BTreeMap<String, geoff_theme::FlatToken>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let graph = "urn:geoff:design-tokens";
+
+    for (path, token) in tokens {
+        let subject = format!("urn:geoff:design-token:{path}");
+
+        // Insert type
+        if let Some(ref token_type) = token.token_type {
+            store.insert_triple_into(
+                &subject,
+                "urn:geoff:design-token:type",
+                &ObjectValue::Literal(token_type.clone()),
+                graph,
+            )?;
+        }
+
+        // Insert value as a CSS-formatted string
+        let css_value = token_value_to_string(&token.value);
+        store.insert_triple_into(
+            &subject,
+            "urn:geoff:design-token:value",
+            &ObjectValue::Literal(css_value),
+            graph,
+        )?;
+
+        // Insert CSS variable name
+        let var_name = path_to_css_var(path);
+        store.insert_triple_into(
+            &subject,
+            "urn:geoff:design-token:cssVariable",
+            &ObjectValue::Literal(var_name),
+            graph,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Convert a token value to its string representation for RDF storage.
+fn token_value_to_string(value: &TokenValue) -> String {
+    match value {
+        TokenValue::String(s) => s.clone(),
+        TokenValue::Number(n) => {
+            if n.fract() == 0.0 {
+                format!("{}", *n as i64)
+            } else {
+                format!("{n}")
+            }
+        }
+        TokenValue::Bool(b) => b.to_string(),
+        TokenValue::Object(obj) => serde_json::to_string(obj).unwrap_or_default(),
+        TokenValue::Array(arr) => serde_json::to_string(arr).unwrap_or_default(),
+    }
+}
+
+/// Convert a dot-separated token path to a CSS custom property name.
+fn path_to_css_var(path: &str) -> String {
+    let mut result = String::with_capacity(path.len() + 2);
+    result.push_str("--");
+    let chars: Vec<char> = path.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '.' {
+            result.push('-');
+        } else if c.is_uppercase() && i > 0 && chars[i - 1] != '.' {
+            result.push('-');
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c.to_ascii_lowercase());
+        }
+    }
+    result
+}
+
 /// Scan template files for `sparql(` usage and return the set of template names that contain it.
 fn find_sparql_templates(
     template_dir: &Utf8Path,
@@ -569,7 +914,7 @@ fn read_frontmatter_template(
 ) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let raw = std::fs::read_to_string(file_path)?;
     let (fm_str, _) = split_frontmatter(&raw)?;
-    let (frontmatter, _) = parse_frontmatter(fm_str)?;
+    let (frontmatter, _, _) = parse_frontmatter(fm_str)?;
     Ok(frontmatter
         .get("template")
         .and_then(|v| v.as_str())
@@ -631,7 +976,8 @@ mod tests {
             JsonValue::String("value".into()),
         );
 
-        insert_custom_triples(&store, &page_uri, graph_name, &fields).unwrap();
+        let registry = MappingRegistry::new();
+        insert_custom_triples(&store, &page_uri, graph_name, &fields, &registry).unwrap();
 
         // Query the expanded geoff:stage triple
         let results = store
@@ -718,7 +1064,7 @@ description = "A test project"
         // Verify description is also in the graph
         let results = store
             .query_to_json(
-                "SELECT ?desc WHERE { GRAPH ?g { ?s <http://schema.org/description> ?desc } }",
+                "SELECT ?desc WHERE { GRAPH ?g { ?s <https://schema.org/description> ?desc } }",
             )
             .unwrap();
         let arr = results.as_array().unwrap();
@@ -784,7 +1130,7 @@ description = "A test project"
         .unwrap();
         std::fs::write(
             tmpl_dir.join("listing.html"),
-            r#"{% set results = sparql(query="SELECT ?title WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title } }") %}{% for row in results %}{{ row.title }} {% endfor %}"#,
+            r#"{% set results = sparql(query="SELECT ?title WHERE { GRAPH ?g { ?s <https://schema.org/name> ?title } }") %}{% for row in results %}{{ row.title }} {% endfor %}"#,
         )
         .unwrap();
 
@@ -850,6 +1196,405 @@ description = "A test project"
             listing2.html.contains("New Post"),
             "listing should include the new post, got: {}",
             listing2.html
+        );
+    }
+
+    #[test]
+    fn page_url_and_frontmatter_available_in_templates() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About Us\"\nnavSection = \"about\"\norder = 2\nheading = \"Learn More\"\n+++\nAbout page\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "url={{ page_url }} nav={{ frontmatter.navSection }} order={{ frontmatter.order }} heading={{ frontmatter.heading }} title={{ frontmatter.title }}",
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 1);
+        let html = &pages[0].html;
+        assert!(html.contains("url=/about.html"), "page_url should be /about.html, got: {html}");
+        assert!(html.contains("nav=about"), "frontmatter.navSection should be 'about', got: {html}");
+        assert!(html.contains("order=2"), "frontmatter.order should be 2, got: {html}");
+        assert!(html.contains("heading=Learn More"), "frontmatter.heading should be available, got: {html}");
+        assert!(html.contains("title=About Us"), "frontmatter.title should also be accessible, got: {html}");
+    }
+
+    #[test]
+    fn page_url_reflects_directory_style() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n\n[build]\nurl_style = \"directory\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About\"\n+++\nAbout\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(tmpl_dir.join("page.html"), "url={{ page_url }}").unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 1);
+        assert!(
+            pages[0].html.contains("url=/about/"),
+            "directory style page_url should be /about/, got: {}",
+            pages[0].html
+        );
+    }
+
+    #[test]
+    fn pages_function_filters_and_sorts() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        let about_dir = content_dir.join("about");
+        std::fs::create_dir_all(&about_dir).unwrap();
+        std::fs::write(
+            content_dir.join("index.md"),
+            "+++\ntitle = \"Home\"\ntemplate = \"listing.html\"\n+++\nHome\n",
+        )
+        .unwrap();
+        std::fs::write(
+            about_dir.join("team.md"),
+            "+++\ntitle = \"Team\"\norder = 2\nnavSection = \"about\"\n+++\nTeam\n",
+        )
+        .unwrap();
+        std::fs::write(
+            about_dir.join("mission.md"),
+            "+++\ntitle = \"Mission\"\norder = 1\nnavSection = \"about\"\n+++\nMission\n",
+        )
+        .unwrap();
+        std::fs::write(
+            content_dir.join("blog.md"),
+            "+++\ntitle = \"Blog\"\nnavSection = \"blog\"\n+++\nBlog\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(tmpl_dir.join("page.html"), "{{ title }}").unwrap();
+        std::fs::write(
+            tmpl_dir.join("listing.html"),
+            r#"{% set nav = pages(navSection="about", sort="order") %}{% for p in nav %}{{ p.title }}({{ p.order }}) {% endfor %}"#,
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        let listing = pages
+            .iter()
+            .find(|p| p.output_path == "index.html")
+            .unwrap();
+        assert!(
+            listing.html.contains("Mission(1)") && listing.html.contains("Team(2)"),
+            "pages() should filter by navSection and sort by order, got: {}",
+            listing.html
+        );
+        let mission_pos = listing.html.find("Mission").unwrap();
+        let team_pos = listing.html.find("Team").unwrap();
+        assert!(
+            mission_pos < team_pos,
+            "Mission (order=1) should come before Team (order=2)"
+        );
+    }
+
+    #[test]
+    fn tree_function_builds_hierarchy() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n\n[build]\nurl_style = \"directory\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        let about_dir = content_dir.join("about");
+        std::fs::create_dir_all(&about_dir).unwrap();
+        std::fs::write(
+            content_dir.join("index.md"),
+            "+++\ntitle = \"Home\"\ntemplate = \"nav.html\"\n+++\nHome\n",
+        )
+        .unwrap();
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About\"\norder = 1\n+++\nAbout\n",
+        )
+        .unwrap();
+        std::fs::write(
+            about_dir.join("team.md"),
+            "+++\ntitle = \"Team\"\norder = 1\n+++\nTeam\n",
+        )
+        .unwrap();
+        std::fs::write(
+            about_dir.join("history.md"),
+            "+++\ntitle = \"History\"\norder = 2\n+++\nHistory\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(tmpl_dir.join("page.html"), "{{ title }}").unwrap();
+        std::fs::write(
+            tmpl_dir.join("nav.html"),
+            r#"{% set nav = tree(sort="order") %}{% for section in nav %}[{{ section.title }}{% for child in section.children %}|{{ child.title }}{% endfor %}]{% endfor %}"#,
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        let nav_page = pages
+            .iter()
+            .find(|p| p.output_path == "index.html")
+            .unwrap();
+        assert!(
+            nav_page.html.contains("[About|Team|History]")
+                || nav_page.html.contains("[About|History|Team]"),
+            "tree() should build hierarchical navigation, got: {}",
+            nav_page.html
+        );
+    }
+
+    #[test]
+    fn insert_data_triples_resolves_friendly_names() {
+        let store = ContentStore::new().unwrap();
+        let page_uri = PageUri::from_path("test.md");
+        let graph_name = page_uri.as_str();
+
+        let mut registry = MappingRegistry::new();
+        registry.add_property("wordCount", "https://schema.org/wordCount");
+
+        let mut data_fields = HashMap::new();
+        // "wordCount" should resolve via registry.resolve_property()
+        data_fields.insert("wordCount".to_string(), serde_json::json!(1500));
+        // "schema:author" should resolve via registry.expand_iri()
+        data_fields.insert(
+            "schema:author".to_string(),
+            JsonValue::String("Alice".into()),
+        );
+        // "customField" has no mapping — should fall back to urn:geoff:meta:customField
+        data_fields.insert(
+            "customField".to_string(),
+            JsonValue::String("some value".into()),
+        );
+
+        insert_data_triples(&store, &page_uri, graph_name, &data_fields, &registry).unwrap();
+
+        // Verify wordCount resolved via property mapping
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <https://schema.org/wordCount> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "wordCount should resolve to schema:wordCount");
+
+        // Verify schema:author resolved via expand_iri
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <https://schema.org/author> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "schema:author should expand to full IRI");
+        assert_eq!(arr[0]["val"], "Alice");
+
+        // Verify unmapped key falls back to urn:geoff:meta:{key}
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:meta:customField> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "unmapped key should use urn:geoff:meta: fallback");
+        assert_eq!(arr[0]["val"], "some value");
+    }
+
+    #[test]
+    fn build_site_ingests_data_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        // Create geoff.toml
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        // Create ontology/mappings.toml with a property mapping
+        let ontology_dir = site_root.join("ontology");
+        std::fs::create_dir_all(&ontology_dir).unwrap();
+        std::fs::write(
+            ontology_dir.join("mappings.toml"),
+            r#"
+[properties]
+wordCount = "https://schema.org/wordCount"
+"#,
+        )
+        .unwrap();
+
+        // Create content with [data] section
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("article.md"),
+            r#"+++
+title = "My Article"
+template = "page.html"
+
+[data]
+wordCount = 2500
+difficulty = "intermediate"
++++
+
+# My Article
+"#,
+        )
+        .unwrap();
+
+        // Create minimal template
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "<h1>{{ title }}</h1>\n{{ content | safe }}",
+        )
+        .unwrap();
+
+        // Build
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 1);
+
+        // Verify wordCount resolved via property mapping to schema:wordCount
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <https://schema.org/wordCount> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "wordCount should be mapped to schema:wordCount");
+
+        // Verify unmapped key falls back to urn:geoff:meta:difficulty
+        let results = store
+            .query_to_json(
+                "SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:meta:difficulty> ?val } }",
+            )
+            .unwrap();
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "difficulty should fall back to urn:geoff:meta:");
+        assert_eq!(arr[0]["val"], "intermediate");
+    }
+
+    #[test]
+    fn rdfa_attrs_available_in_templates() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About\"\ntype = \"Web Page\"\n+++\nAbout\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "<article {{ rdfa_attrs | safe }}>{{ content | safe }}</article>",
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 1);
+        let html = &pages[0].html;
+        assert!(
+            html.contains("vocab=\"https://schema.org/\""),
+            "rdfa_attrs should include vocab, got: {html}"
+        );
+        assert!(
+            html.contains("typeof=\"WebPage\""),
+            "rdfa_attrs should include typeof, got: {html}"
+        );
+        assert!(
+            html.contains("resource=\"/about.html\""),
+            "rdfa_attrs should include resource, got: {html}"
         );
     }
 }

@@ -181,13 +181,13 @@ mod tests {
         let store = ContentStore::new()?;
         store.insert_triple_into(
             "urn:geoff:content:blog/hello.md",
-            "http://schema.org/name",
+            "https://schema.org/name",
             &ObjectValue::Literal("Hello World".into()),
             "urn:geoff:content:blog/hello.md",
         )?;
 
         let json = store.query_to_json(
-            "SELECT ?name WHERE { GRAPH <urn:geoff:content:blog/hello.md> { ?s <http://schema.org/name> ?name } }",
+            "SELECT ?name WHERE { GRAPH <urn:geoff:content:blog/hello.md> { ?s <https://schema.org/name> ?name } }",
         )?;
 
         let rows = json.as_array().unwrap();
@@ -202,12 +202,12 @@ mod tests {
         store.insert_triple_into(
             "urn:geoff:content:blog/hello.md",
             "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-            &ObjectValue::Iri("http://schema.org/BlogPosting".into()),
+            &ObjectValue::Iri("https://schema.org/BlogPosting".into()),
             "urn:geoff:content:blog/hello.md",
         )?;
 
         let json = store.query_to_json(
-            "ASK { GRAPH <urn:geoff:content:blog/hello.md> { <urn:geoff:content:blog/hello.md> a <http://schema.org/BlogPosting> } }",
+            "ASK { GRAPH <urn:geoff:content:blog/hello.md> { <urn:geoff:content:blog/hello.md> a <https://schema.org/BlogPosting> } }",
         )?;
         assert_eq!(json, Value::Bool(true));
         Ok(())
@@ -218,7 +218,7 @@ mod tests {
         let store = ContentStore::new()?;
         store.insert_triple_into(
             "urn:geoff:content:blog/hello.md",
-            "http://schema.org/datePublished",
+            "https://schema.org/datePublished",
             &ObjectValue::TypedLiteral {
                 value: "2026-04-01".into(),
                 datatype: "http://www.w3.org/2001/XMLSchema#date".into(),
@@ -228,7 +228,7 @@ mod tests {
 
         // xsd:date typed literals are queryable with SPARQL date functions
         let json = store.query_to_json(
-            "SELECT ?d WHERE { GRAPH <urn:geoff:content:blog/hello.md> { ?s <http://schema.org/datePublished> ?d } }",
+            "SELECT ?d WHERE { GRAPH <urn:geoff:content:blog/hello.md> { ?s <https://schema.org/datePublished> ?d } }",
         )?;
         let rows = json.as_array().unwrap();
         assert_eq!(rows.len(), 1);

@@ -113,7 +113,7 @@ fn sparql_returns_all_titles() {
 
     let json = store
         .query_to_json(
-            "SELECT ?title WHERE { GRAPH ?g { ?s <http://schema.org/name> ?title } } ORDER BY ?title",
+            "SELECT ?title WHERE { GRAPH ?g { ?s <https://schema.org/name> ?title } } ORDER BY ?title",
         )
         .unwrap();
 
@@ -132,7 +132,7 @@ fn sparql_blog_posts_have_correct_type() {
     let (_tmpdir, store) = run_build();
 
     let json = store
-        .query_to_json("SELECT ?s WHERE { GRAPH ?g { ?s a <http://schema.org/BlogPosting> } }")
+        .query_to_json("SELECT ?s WHERE { GRAPH ?g { ?s a <https://schema.org/BlogPosting> } }")
         .unwrap();
 
     let rows = json.as_array().unwrap();

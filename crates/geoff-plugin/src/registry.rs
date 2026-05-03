@@ -274,6 +274,10 @@ mod tests {
             template_dir: "templates".into(),
             plugins: vec![],
             search: Default::default(),
+            theme: Default::default(),
+            devspaces: Default::default(),
+            build: Default::default(),
+            linked_data: Default::default(),
         };
 
         let opts = HashMap::new();
@@ -300,6 +304,10 @@ mod tests {
             template_dir: "templates".into(),
             plugins: vec![],
             search: Default::default(),
+            theme: Default::default(),
+            devspaces: Default::default(),
+            build: Default::default(),
+            linked_data: Default::default(),
         };
 
         let store = geoff_graph::store::ContentStore::new().expect("failed to create store");

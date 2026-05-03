@@ -3,3 +3,10 @@ title = "My Documentation"
 content_dir = "content"
 output_dir = "dist"
 template_dir = "templates"
+
+[theme]
+name = "docs"
+base = "default"
+
+[theme.modes]
+dark = "tokens.dark.json"

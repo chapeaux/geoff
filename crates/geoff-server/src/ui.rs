@@ -113,11 +113,18 @@ pub const AUTHORING_UI_HTML: &str = r##"<!DOCTYPE html>
         </div>
     </main>
 
-    <!-- Web Components -->
-    <script src="/__geoff__/components/geoff-editor/geoff-editor.js"></script>
-    <script src="/__geoff__/components/geoff-graph-view/geoff-graph-view.js"></script>
-    <script src="/__geoff__/components/geoff-vocab-picker/geoff-vocab-picker.js"></script>
-    <script src="/__geoff__/components/geoff-shacl-panel/geoff-shacl-panel.js"></script>
+    <!-- Web Components (inline stubs — full implementations coming soon) -->
+    <script>
+    for (const name of ['geoff-editor','geoff-graph-view','geoff-vocab-picker','geoff-shacl-panel']) {
+      if (!customElements.get(name)) {
+        customElements.define(name, class extends HTMLElement {
+          connectedCallback() {
+            this.innerHTML = '<p style="color:var(--text-muted);padding:2rem">Coming soon.</p>';
+          }
+        });
+      }
+    }
+    </script>
 
     <script>
     // ── Router ──────────────────────────────────────────────────────

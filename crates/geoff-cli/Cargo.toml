@@ -22,12 +22,19 @@ geoff-server = { version = "0.2.5", path = "../geoff-server" }
 geoff-ontology = { version = "0.2.5", path = "../geoff-ontology" }
 geoff-plugin = { version = "0.2.5", path = "../geoff-plugin" }
 geoff-deno = { version = "0.2.5", path = "../geoff-deno" }
+geoff-theme = { version = "0.2.5", path = "../geoff-theme" }
 clap = { version = "4", features = ["derive"] }
 colored = "3"
 tokio = { version = "1", features = ["full"] }
 toml = "0.8"
 serde_json = "1"
 camino = "1"
+lightningcss = "1.0.0-alpha.71"
+image = "0.25"
+sha2 = "0.10"
+walkdir = "2"
+reqwest = { version = "0.12", features = ["json"] }
+tempfile = "3"
+zip = "2"
 
 [dev-dependencies]
-tempfile = "3"
