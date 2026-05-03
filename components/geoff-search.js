@@ -10,34 +10,246 @@
  * Attributes:
  *   index  — URL of the N-Triples search index (default: "/search.nt")
  *   limit  — Maximum results to show (default: "20")
+ *
+ * Search syntax:
+ *   foo bar         — implicit AND (both must match)
+ *   "exact phrase"  — quoted exact match (case-insensitive)
+ *   foo OR bar      — either term matches
+ *   foo AND bar     — explicit AND (same as space)
+ *
+ * Keyboard:
+ *   ArrowDown / ArrowUp — navigate results
+ *   Enter               — go to selected result
+ *   Escape              — close results
  */
+
+const STYLES = `
+geoff-search {
+  display: block;
+  anchor-name: --geoff-search;
+}
+.geoff-search-form {
+  position: relative;
+}
+.geoff-search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  z-index: 9999;
+  background: var(--geoff-search-bg, #fff);
+  border: 1px solid var(--geoff-search-border, #ccc);
+  border-radius: var(--geoff-search-radius, 4px);
+  box-shadow: var(--geoff-search-shadow, 0 4px 12px rgba(0,0,0,.15));
+  max-height: var(--geoff-search-max-height, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  /* Modern: CSS anchor positioning */
+  position: fixed;
+  position-anchor: --geoff-search;
+  inset-area: block-end span-inline-start;
+  width: anchor-size(inline);
+  margin-block-start: 4px;
+}
+.geoff-search-results:empty {
+  display: none;
+}
+/* Fallback for browsers without anchor positioning */
+@supports not (anchor-name: --x) {
+  .geoff-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
+    margin-top: 4px;
+  }
+}
+.geoff-search-result {
+  display: block;
+  padding: 8px 12px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--geoff-search-divider, #eee);
+  outline: none;
+}
+.geoff-search-result:last-child {
+  border-bottom: none;
+}
+.geoff-search-result[aria-selected="true"],
+.geoff-search-result:focus {
+  background: var(--geoff-search-highlight, #f0f4ff);
+}
+.geoff-search-result strong {
+  display: block;
+}
+.geoff-search-result small {
+  display: block;
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+.geoff-search-status {
+  font-size: 0.85em;
+  opacity: 0.7;
+  min-height: 1.2em;
+}
+@media (prefers-color-scheme: dark) {
+  .geoff-search-results {
+    --geoff-search-bg: #1a1a1a;
+    --geoff-search-border: #444;
+    --geoff-search-divider: #333;
+    --geoff-search-highlight: #2a2a3a;
+  }
+}
+`;
+
+let stylesInjected = false;
+
 class GeoffSearch extends HTMLElement {
   constructor() {
     super();
     this._store = null;
     this._loading = false;
     this._loaded = false;
+    this._activeIndex = -1;
+    this._resultCount = 0;
+    this._listboxId = `geoff-search-listbox-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   connectedCallback() {
     if (typeof window === 'undefined') return;
+
+    if (!stylesInjected) {
+      const style = document.createElement('style');
+      style.textContent = STYLES;
+      document.head.appendChild(style);
+      stylesInjected = true;
+    }
+
     if (!this.querySelector('input')) {
       this.innerHTML = `
         <form role="search" class="geoff-search-form">
-          <input type="search" placeholder="Search…" aria-label="Search" />
+          <input type="search"
+            placeholder="Search…"
+            aria-label="Search"
+            role="combobox"
+            aria-expanded="false"
+            aria-autocomplete="list"
+            aria-controls="${this._listboxId}"
+            autocomplete="off" />
           <div class="geoff-search-status" aria-live="polite"></div>
+          <ul class="geoff-search-results"
+            id="${this._listboxId}"
+            role="listbox"
+            aria-label="Search results"></ul>
         </form>
-        <div class="geoff-search-results" role="list"></div>
       `;
     }
 
     const input = this.querySelector('input');
+    const form = this.querySelector('form');
     let debounce;
+
     input.addEventListener('input', () => {
       clearTimeout(debounce);
       debounce = setTimeout(() => this._search(input.value), 200);
     });
+
     input.addEventListener('focus', () => this._ensureLoaded(), { once: true });
+
+    input.addEventListener('keydown', (e) => this._onKeydown(e));
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this._activateSelected();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!this.contains(e.target)) this._closeResults();
+    });
+  }
+
+  _onKeydown(e) {
+    const input = this.querySelector('input');
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        this._moveSelection(1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        this._moveSelection(-1);
+        break;
+      case 'Enter':
+        if (this._activeIndex >= 0) {
+          e.preventDefault();
+          this._activateSelected();
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        this._closeResults();
+        input.blur();
+        break;
+      case 'Home':
+        if (this._resultCount > 0) {
+          e.preventDefault();
+          this._setSelection(0);
+        }
+        break;
+      case 'End':
+        if (this._resultCount > 0) {
+          e.preventDefault();
+          this._setSelection(this._resultCount - 1);
+        }
+        break;
+    }
+  }
+
+  _moveSelection(delta) {
+    if (this._resultCount === 0) return;
+    let next = this._activeIndex + delta;
+    if (next < 0) next = this._resultCount - 1;
+    if (next >= this._resultCount) next = 0;
+    this._setSelection(next);
+  }
+
+  _setSelection(index) {
+    const options = this.querySelectorAll('[role="option"]');
+    const input = this.querySelector('input');
+
+    options.forEach((opt, i) => {
+      opt.setAttribute('aria-selected', i === index ? 'true' : 'false');
+    });
+
+    this._activeIndex = index;
+
+    if (index >= 0 && options[index]) {
+      input.setAttribute('aria-activedescendant', options[index].id);
+      options[index].scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  _activateSelected() {
+    const selected = this.querySelector('[aria-selected="true"]');
+    if (selected) {
+      const url = selected.getAttribute('data-url');
+      if (url) window.location.href = url;
+    }
+  }
+
+  _closeResults() {
+    const container = this.querySelector('.geoff-search-results');
+    const input = this.querySelector('input');
+    if (container) container.innerHTML = '';
+    if (input) input.setAttribute('aria-expanded', 'false');
+    input?.removeAttribute('aria-activedescendant');
+    this._activeIndex = -1;
+    this._resultCount = 0;
+    this._setStatus('');
   }
 
   async _ensureLoaded() {
@@ -67,10 +279,10 @@ class GeoffSearch extends HTMLElement {
   }
 
   async _search(query) {
-    const results = this.querySelector('.geoff-search-results');
+    const container = this.querySelector('.geoff-search-results');
+    const input = this.querySelector('input');
     if (!query.trim()) {
-      results.innerHTML = '';
-      this._setStatus('');
+      this._closeResults();
       return;
     }
 
@@ -79,8 +291,7 @@ class GeoffSearch extends HTMLElement {
 
     const tokens = this._parseQuery(query.trim());
     if (tokens.length === 0) {
-      results.innerHTML = '';
-      this._setStatus('');
+      this._closeResults();
       return;
     }
 
@@ -103,23 +314,13 @@ class GeoffSearch extends HTMLElement {
         ? [...bindings]
         : bindings;
       this._renderResults(arr, query);
+      input.setAttribute('aria-expanded', this._resultCount > 0 ? 'true' : 'false');
     } catch (e) {
       console.error('[geoff-search] query error:', e);
       this._setStatus('Search error');
     }
   }
 
-  /**
-   * Parse a search query into tokens.
-   *
-   * Supports:
-   * - Multiple terms: `foo bar` (implicit AND — both must match)
-   * - Quoted phrases: `"exact phrase"` (case-insensitive exact match)
-   * - OR operator: `foo OR bar` (either must match)
-   * - AND operator: `foo AND bar` (explicit AND, same as space)
-   *
-   * OR binds looser than AND: `a b OR c` → `(a AND b) OR c`
-   */
   _parseQuery(input) {
     const tokens = [];
     let i = 0;
@@ -179,6 +380,8 @@ class GeoffSearch extends HTMLElement {
 
     if (!bindings || bindings.length === 0) {
       container.innerHTML = '';
+      this._activeIndex = -1;
+      this._resultCount = 0;
       this._setStatus(`No results for "${query}"`);
       return;
     }
@@ -202,18 +405,30 @@ class GeoffSearch extends HTMLElement {
       results.push({ title, url, desc, context });
     }
 
+    this._resultCount = results.length;
+    this._activeIndex = -1;
     this._setStatus(`${results.length} result${results.length === 1 ? '' : 's'}`);
 
-    container.innerHTML = results.map(({ title, url, desc, context }) => {
+    container.innerHTML = results.map(({ title, url, desc, context }, i) => {
       const t = this._esc(title);
       const c = this._esc(context);
       const d = this._esc(desc);
-      return `<a href="${url}" class="geoff-search-result" role="listitem">
+      const optionId = `${this._listboxId}-opt-${i}`;
+      return `<li role="option" id="${optionId}" aria-selected="false"
+                  data-url="${this._esc(url)}" class="geoff-search-result"
+                  tabindex="-1">
         <strong>${t}</strong>
         ${c ? `<small class="geoff-search-context">${c}</small>` : ''}
         ${d ? `<small>${d}</small>` : ''}
-      </a>`;
+      </li>`;
     }).join('');
+
+    container.querySelectorAll('[role="option"]').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const url = opt.getAttribute('data-url');
+        if (url) window.location.href = url;
+      });
+    });
   }
 
   _setStatus(text) {
