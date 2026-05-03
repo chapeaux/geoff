@@ -100,7 +100,10 @@ pub fn ingest_content(
     let content_dir = site_root.join(&config.content_dir);
 
     let mappings_path = site_root.join("ontology/mappings.toml");
-    let registry = MappingRegistry::load(&mappings_path)?;
+    let mut registry = MappingRegistry::load(&mappings_path)?;
+    if !config.linked_data.prefixes.is_empty() {
+        registry.add_prefixes(config.linked_data.prefixes.clone());
+    }
 
     let data_dir = content_dir.join("data");
     for ttl_file in scan_data_dir(&data_dir)? {

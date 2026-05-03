@@ -422,8 +422,21 @@ async fn cmd_build(
         SiteRenderer::new(&template_dir)
             .map_err(|e| format!("Failed to load templates from {template_dir}: {e}"))?
     };
-    renderer.register_sparql_function(Arc::new(store.clone()));
+    let store_arc = Arc::new(store.clone());
+    renderer.register_sparql_function(store_arc.clone());
     renderer.register_component_function(path.join("components").into());
+
+    // Register RDFa template helpers if enabled
+    if config.linked_data.rdfa {
+        let mappings_path = path.join("ontology/mappings.toml");
+        let mut rdfa_registry =
+            geoff_ontology::mappings::MappingRegistry::load(&mappings_path)
+                .unwrap_or_default();
+        if !config.linked_data.prefixes.is_empty() {
+            rdfa_registry.add_prefixes(config.linked_data.prefixes.clone());
+        }
+        renderer.register_rdfa_functions(store_arc.clone(), Arc::new(rdfa_registry));
+    }
 
     // Load and register theme tokens (before content build so theme_css() is available)
     let theme_result =

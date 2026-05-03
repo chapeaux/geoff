@@ -75,6 +75,17 @@ pub async fn run(
     renderer.register_sparql_function(Arc::clone(&store));
     renderer.register_component_function(site_root.join("components").into());
 
+    // Register RDFa template helpers
+    if config.linked_data.rdfa {
+        let mappings_path = site_root.join("ontology/mappings.toml");
+        let mut rdfa_registry =
+            geoff_ontology::mappings::MappingRegistry::load(&mappings_path).unwrap_or_default();
+        if !config.linked_data.prefixes.is_empty() {
+            rdfa_registry.add_prefixes(config.linked_data.prefixes.clone());
+        }
+        renderer.register_rdfa_functions(Arc::clone(&store), Arc::new(rdfa_registry));
+    }
+
     // Load and register theme tokens
     let _theme_result = geoff_render::pipeline::load_and_register_theme(
         &site_root,
@@ -216,6 +227,20 @@ pub async fn run(
                         renderer.register_sparql_function(Arc::clone(&state.store));
                         renderer
                             .register_component_function(state.site_root.join("components").into());
+                        if state.config.linked_data.rdfa {
+                            let mappings_path = state.site_root.join("ontology/mappings.toml");
+                            let mut rdfa_registry =
+                                geoff_ontology::mappings::MappingRegistry::load(&mappings_path)
+                                    .unwrap_or_default();
+                            if !state.config.linked_data.prefixes.is_empty() {
+                                rdfa_registry
+                                    .add_prefixes(state.config.linked_data.prefixes.clone());
+                            }
+                            renderer.register_rdfa_functions(
+                                Arc::clone(&state.store),
+                                Arc::new(rdfa_registry),
+                            );
+                        }
                         state.store.clear().map_err(|e| e.to_string())?;
                         let _theme = geoff_render::pipeline::load_and_register_theme(
                             &state.site_root,
