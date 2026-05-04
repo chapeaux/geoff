@@ -3,6 +3,7 @@ use std::fmt::Write;
 
 use serde_json::Value;
 
+use crate::resolve::is_reference;
 use crate::tokens::{FlatToken, TokenValue};
 
 /// Generate CSS custom properties from a flat token map.
@@ -42,6 +43,7 @@ pub fn generate_css_with_prefix(
                 &token.value,
                 token.token_type.as_deref(),
                 prefix,
+                Some(tokens),
             );
         }
     }
@@ -76,6 +78,7 @@ fn generate_light_dark(
                     &light_token.value,
                     light_token.token_type.as_deref(),
                     prefix,
+                    Some(light),
                 );
             } else {
                 let var_name = path_to_var_name_with_prefix(path, prefix);
@@ -93,6 +96,7 @@ fn generate_light_dark(
                 &light_token.value,
                 light_token.token_type.as_deref(),
                 prefix,
+                Some(light),
             );
         }
     }
@@ -118,6 +122,7 @@ fn write_token_vars(
     value: &TokenValue,
     token_type: Option<&str>,
     prefix: Option<&str>,
+    all_tokens: Option<&BTreeMap<String, FlatToken>>,
 ) {
     match (value, token_type) {
         (TokenValue::Object(obj), Some("typography")) => {
@@ -147,11 +152,59 @@ fn write_token_vars(
             let var_name = path_to_var_name_with_prefix(path, prefix);
             let _ = writeln!(css, "  {var_name}: {};", parts.join(", "));
         }
+        (TokenValue::String(s), _) if is_light_dark_refs(s) => {
+            let var_name = path_to_var_name_with_prefix(path, prefix);
+            let val = expand_light_dark(s, prefix, all_tokens);
+            let _ = writeln!(css, "  {var_name}: {val};");
+        }
         _ => {
             let var_name = path_to_var_name_with_prefix(path, prefix);
             let val = token_to_css_value(value, token_type);
             let _ = writeln!(css, "  {var_name}: {val};");
         }
+    }
+}
+
+/// Check if a string matches the pattern `light-dark({ref}, {ref})`.
+fn is_light_dark_refs(s: &str) -> bool {
+    if let Some(inner) = s
+        .strip_prefix("light-dark(")
+        .and_then(|s| s.strip_suffix(')'))
+        && let Some((light, dark)) = inner.split_once(", ")
+    {
+        return is_reference(light) && is_reference(dark);
+    }
+    false
+}
+
+/// Expand `light-dark({ref1}, {ref2})` into CSS `light-dark(var(--name, fallback), var(--name, fallback))`.
+fn expand_light_dark(
+    s: &str,
+    prefix: Option<&str>,
+    all_tokens: Option<&BTreeMap<String, FlatToken>>,
+) -> String {
+    let inner = s
+        .strip_prefix("light-dark(")
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap();
+    let (light_ref, dark_ref) = inner.split_once(", ").unwrap();
+    let light_path = &light_ref[1..light_ref.len() - 1];
+    let dark_path = &dark_ref[1..dark_ref.len() - 1];
+    let light_var = path_to_var_name_with_prefix(light_path, prefix);
+    let dark_var = path_to_var_name_with_prefix(dark_path, prefix);
+
+    let light_fallback = all_tokens
+        .and_then(|t| t.get(light_path))
+        .map(|t| token_to_css_value(&t.value, t.token_type.as_deref()));
+    let dark_fallback = all_tokens
+        .and_then(|t| t.get(dark_path))
+        .map(|t| token_to_css_value(&t.value, t.token_type.as_deref()));
+
+    match (light_fallback, dark_fallback) {
+        (Some(lf), Some(df)) => {
+            format!("light-dark(var({light_var}, {lf}), var({dark_var}, {df}))")
+        }
+        _ => format!("light-dark(var({light_var}), var({dark_var}))"),
     }
 }
 

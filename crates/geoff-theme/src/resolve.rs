@@ -38,7 +38,27 @@ fn resolve_value(
     }
 }
 
-fn is_reference(s: &str) -> bool {
+/// Resolve `{reference}` strings in token values, checking a base token set first.
+/// This lets theme tokens reference design system tokens.
+pub fn resolve_references_with_base(
+    tokens: &mut BTreeMap<String, FlatToken>,
+    base: &BTreeMap<String, FlatToken>,
+) {
+    // Build a combined lookup: base values + local values (local overrides base)
+    let mut all: BTreeMap<String, TokenValue> = base
+        .iter()
+        .map(|(k, t)| (k.clone(), t.value.clone()))
+        .collect();
+    for (k, t) in tokens.iter() {
+        all.insert(k.clone(), t.value.clone());
+    }
+
+    for token in tokens.values_mut() {
+        token.value = resolve_value(&token.value, &all, 0);
+    }
+}
+
+pub(crate) fn is_reference(s: &str) -> bool {
     s.starts_with('{') && s.ends_with('}') && s.len() > 2 && !s[1..s.len() - 1].contains('{')
 }
 
@@ -143,6 +163,40 @@ mod tests {
 
         match &flat["color.primary"].value {
             TokenValue::String(s) => assert_eq!(s, "#0066cc"),
+            _ => panic!("expected string"),
+        }
+    }
+
+    #[test]
+    fn resolve_with_base_tokens() {
+        let base_json = r##"{
+            "color": {
+                "$type": "color",
+                "red": { "$value": "#e00" },
+                "blue": { "$value": "#06c" }
+            }
+        }"##;
+        let theme_json = r##"{
+            "color": {
+                "$type": "color",
+                "primary": { "$value": "{color.red}" },
+                "secondary": { "$value": "{color.blue}" }
+            }
+        }"##;
+
+        let base = DesignTokens::from_json(base_json).unwrap();
+        let base_flat = base.flatten();
+        let theme = DesignTokens::from_json(theme_json).unwrap();
+        let mut theme_flat = theme.flatten();
+
+        resolve_references_with_base(&mut theme_flat, &base_flat);
+
+        match &theme_flat["color.primary"].value {
+            TokenValue::String(s) => assert_eq!(s, "#e00"),
+            _ => panic!("expected string"),
+        }
+        match &theme_flat["color.secondary"].value {
+            TokenValue::String(s) => assert_eq!(s, "#06c"),
             _ => panic!("expected string"),
         }
     }

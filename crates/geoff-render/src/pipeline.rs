@@ -739,6 +739,39 @@ pub struct ThemeResult {
 /// function on the renderer, and insert tokens into the RDF graph.
 ///
 /// Returns the generated CSS strings for writing to output.
+/// Load design system tokens from `[design]` config.
+/// Merges multiple files in order (later overrides earlier).
+fn load_design_system_tokens(
+    site_root: &Utf8Path,
+    config: &SiteConfig,
+) -> std::result::Result<
+    Option<std::collections::BTreeMap<String, geoff_theme::FlatToken>>,
+    Box<dyn std::error::Error>,
+> {
+    if config.design.tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut merged: Option<serde_json::Value> = None;
+    for token_path in &config.design.tokens {
+        let path = site_root.join(token_path);
+        if !path.exists() {
+            return Err(format!("Design system token file not found: {path}").into());
+        }
+        let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        merged = Some(match merged {
+            Some(base) => geoff_theme::merge_tokens(&base, &json),
+            None => json,
+        });
+    }
+
+    let merged = merged.unwrap();
+    let tokens = geoff_theme::DesignTokens::from_json(&merged.to_string())?;
+    let mut flat = tokens.flatten();
+    geoff_theme::resolve_references(&mut flat);
+    Ok(Some(flat))
+}
+
 pub fn load_and_register_theme(
     site_root: &Utf8Path,
     config: &SiteConfig,
@@ -751,15 +784,29 @@ pub fn load_and_register_theme(
     };
 
     let theme_dir = site_root.join("themes").join(&theme_name);
-    let tokens_path = theme_dir.join("tokens.json");
 
-    if !tokens_path.exists() {
+    // Load design system tokens if configured
+    let system_flat = load_design_system_tokens(site_root, config)?;
+
+    // Determine which token file to load for the theme
+    let theme_token_file = if system_flat.is_some() {
+        theme_dir.join("theme.json")
+    } else {
+        theme_dir.join("tokens.json")
+    };
+
+    if !theme_token_file.exists() {
+        if system_flat.is_some() {
+            eprintln!(
+                "warning: No theme.json found at {theme_token_file}. Run `geoff theme generate {theme_name}` to create one from the design system."
+            );
+        }
         return Ok(None);
     }
 
     // 1. Read theme tokens
     let theme_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&tokens_path)?)?;
+        serde_json::from_str(&std::fs::read_to_string(&theme_token_file)?)?;
 
     // 2. If base theme is set, read and merge base tokens
     let merged_json = if let Some(base_name) = &config.theme.base {
@@ -778,17 +825,28 @@ pub fn load_and_register_theme(
     // 3. Parse and flatten tokens
     let tokens = geoff_theme::DesignTokens::from_json(&merged_json.to_string())?;
     let mut flat = tokens.flatten();
-    geoff_theme::resolve_references(&mut flat);
 
-    // 4. Handle dark mode tokens if configured
-    let dark_flat = if let Some(dark_file) = &config.theme.modes.dark {
-        let dark_path = theme_dir.join(dark_file);
-        if dark_path.exists() {
-            let dark_tokens =
-                geoff_theme::DesignTokens::from_file(camino::Utf8Path::new(dark_path.as_str()))?;
-            let mut dark_flat = dark_tokens.flatten();
-            geoff_theme::resolve_references(&mut dark_flat);
-            Some(dark_flat)
+    // 4. Resolve references — against design system if available, else self-only
+    if let Some(ref system) = system_flat {
+        geoff_theme::resolve_references_with_base(&mut flat, system);
+    } else {
+        geoff_theme::resolve_references(&mut flat);
+    }
+
+    // 5. Handle dark mode tokens if configured (legacy path, no [design])
+    let dark_flat = if system_flat.is_none() {
+        if let Some(dark_file) = &config.theme.modes.dark {
+            let dark_path = theme_dir.join(dark_file);
+            if dark_path.exists() {
+                let dark_tokens = geoff_theme::DesignTokens::from_file(camino::Utf8Path::new(
+                    dark_path.as_str(),
+                ))?;
+                let mut dark_flat = dark_tokens.flatten();
+                geoff_theme::resolve_references(&mut dark_flat);
+                Some(dark_flat)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -796,16 +854,16 @@ pub fn load_and_register_theme(
         None
     };
 
-    // 5. Generate CSS
+    // 6. Generate CSS
     let prefix = config.theme.prefix.as_deref();
     let css = geoff_theme::generate_css_with_prefix(&flat, dark_flat.as_ref(), false, prefix);
     let critical_css =
         geoff_theme::generate_css_with_prefix(&flat, dark_flat.as_ref(), true, prefix);
 
-    // 6. Register the theme_css function on the renderer
+    // 7. Register the theme_css function on the renderer
     renderer.register_theme_function(css.clone(), critical_css.clone());
 
-    // 7. Insert tokens as triples into the RDF graph
+    // 8. Insert tokens as triples into the RDF graph
     insert_tokens_into_graph(store, &flat)?;
 
     Ok(Some(ThemeResult {

@@ -152,6 +152,14 @@ enum ThemeCommands {
         #[arg(short, long, default_value = "3000")]
         port: u16,
     },
+    /// Generate a theme from design system tokens
+    Generate {
+        /// Theme name (creates themes/{name}/theme.json)
+        name: String,
+        /// Path to site root (defaults to current directory)
+        #[arg(short, long, default_value = ".")]
+        path: Utf8PathBuf,
+    },
 }
 
 /// Verbosity level derived from CLI flags.
@@ -203,6 +211,7 @@ async fn main() {
         Commands::Theme { action } => match action {
             ThemeCommands::Preview { path, port } => cmd_theme_preview(&path, port, v).await,
             ThemeCommands::Edit { path, port } => cmd_theme_edit(&path, port, v).await,
+            ThemeCommands::Generate { name, path } => cmd_theme_generate(&path, &name, v),
         },
         Commands::Publish { target, path } => match target {
             PublishTarget::Download { output } => {
@@ -874,6 +883,189 @@ type = "{content_type}"
     std::fs::write(&file_path, content)?;
     v.success(&format!("Created {file_path}"));
     Ok(())
+}
+
+fn cmd_theme_generate(
+    path: &Utf8Path,
+    name: &str,
+    v: Verbosity,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    use geoff_core::config::SiteConfig;
+    use std::collections::{BTreeMap, HashSet};
+
+    let config = SiteConfig::from_file(&path.join("geoff.toml"))?;
+
+    if config.design.tokens.is_empty() {
+        return Err("No [design] tokens configured in geoff.toml. Add:\n\n[design]\ntokens = [\"path/to/tokens.json\"]\n".into());
+    }
+
+    // Load and merge design system tokens
+    let mut merged: Option<serde_json::Value> = None;
+    for token_path in &config.design.tokens {
+        let full_path = path.join(token_path);
+        if !full_path.exists() {
+            return Err(format!("Design system token file not found: {full_path}").into());
+        }
+        let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&full_path)?)?;
+        v.detail(&format!("Loaded {token_path}"));
+        merged = Some(match merged {
+            Some(base) => geoff_theme::merge_tokens(&base, &json),
+            None => json,
+        });
+    }
+
+    let merged = merged.unwrap();
+    let tokens = geoff_theme::DesignTokens::from_json(&merged.to_string())?;
+    let mut flat = tokens.flatten();
+    geoff_theme::resolve_references(&mut flat);
+
+    v.detail(&format!("Loaded {} design system tokens", flat.len()));
+
+    // Detect -on-light/-on-dark pairs (suffix and group conventions)
+    let mut pairs: Vec<(String, String, String)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for path_key in flat.keys() {
+        // Suffix: "foo-on-light" / "foo-on-dark"
+        if let Some(base) = path_key.strip_suffix("-on-light") {
+            let dark = format!("{base}-on-dark");
+            if flat.contains_key(&dark) && seen.insert(base.to_string()) {
+                pairs.push((base.to_string(), path_key.clone(), dark));
+            }
+        }
+        // Group: "foo.on.light" / "foo.on.dark"
+        if let Some(base) = path_key.strip_suffix(".on.light") {
+            let dark = format!("{base}.on.dark");
+            if flat.contains_key(&dark) && seen.insert(base.to_string()) {
+                pairs.push((base.to_string(), path_key.clone(), dark));
+            }
+        }
+    }
+
+    v.detail(&format!("Detected {} light/dark pairs", pairs.len()));
+
+    // Build theme.json as a DTCG token structure
+    let mut theme_obj = serde_json::Map::new();
+
+    // Group tokens by their top-level group for DTCG structure
+    let mut groups: BTreeMap<String, serde_json::Map<String, serde_json::Value>> = BTreeMap::new();
+
+    // Add light/dark pairs with aggregates
+    for (base, light_path, dark_path) in &pairs {
+        let light_ref = format!("{{{light_path}}}");
+        let dark_ref = format!("{{{dark_path}}}");
+        let aggregate = format!("light-dark({light_ref}, {dark_ref})");
+
+        let (group, _) = first_group(light_path);
+        let group_map = groups.entry(group.clone()).or_default();
+
+        // Get the token type from the light token
+        let token_type = flat.get(light_path).and_then(|t| t.token_type.clone());
+
+        // Add -on-light reference
+        let light_local = light_path
+            .strip_prefix(&format!("{group}."))
+            .unwrap_or(light_path);
+        group_map.insert(
+            light_local.to_string(),
+            make_token_entry(&light_ref, token_type.as_deref()),
+        );
+
+        // Add -on-dark reference
+        let dark_local = dark_path
+            .strip_prefix(&format!("{group}."))
+            .unwrap_or(dark_path);
+        group_map.insert(
+            dark_local.to_string(),
+            make_token_entry(&dark_ref, token_type.as_deref()),
+        );
+
+        // Add aggregate
+        let base_local = base.strip_prefix(&format!("{group}.")).unwrap_or(base);
+        let mut agg_entry = serde_json::Map::new();
+        agg_entry.insert("$value".to_string(), serde_json::json!(aggregate));
+        agg_entry.insert(
+            "$description".to_string(),
+            serde_json::json!("Auto-generated light-dark aggregate"),
+        );
+        if let Some(t) = &token_type {
+            agg_entry.insert("$type".to_string(), serde_json::json!(t));
+        }
+        group_map.insert(base_local.to_string(), serde_json::Value::Object(agg_entry));
+    }
+
+    // Add non-paired tokens as references
+    for (path_key, token) in &flat {
+        // Skip tokens that are part of a pair (light, dark, or base)
+        if seen.contains(path_key) {
+            continue;
+        }
+        let is_pair_member = path_key.ends_with("-on-light")
+            || path_key.ends_with("-on-dark")
+            || path_key.ends_with(".on.light")
+            || path_key.ends_with(".on.dark");
+        if is_pair_member {
+            continue;
+        }
+
+        let reference = format!("{{{path_key}}}");
+        let (group, _) = first_group(path_key);
+        let group_map = groups.entry(group.clone()).or_default();
+        let local = path_key
+            .strip_prefix(&format!("{group}."))
+            .unwrap_or(path_key);
+        group_map.insert(
+            local.to_string(),
+            make_token_entry(&reference, token.token_type.as_deref()),
+        );
+    }
+
+    // Build final JSON with group $type annotations
+    for (group_name, entries) in &groups {
+        let mut group_obj = serde_json::Map::new();
+
+        // Infer group $type from first token's type
+        if let Some(first_entry) = entries.values().next()
+            && let Some(t) = first_entry.get("$type")
+        {
+            group_obj.insert("$type".to_string(), t.clone());
+        }
+
+        for (key, val) in entries {
+            group_obj.insert(key.clone(), val.clone());
+        }
+        theme_obj.insert(group_name.clone(), serde_json::Value::Object(group_obj));
+    }
+
+    // Write to themes/{name}/theme.json
+    let theme_dir = path.join("themes").join(name);
+    std::fs::create_dir_all(&theme_dir)?;
+    let theme_path = theme_dir.join("theme.json");
+    let json_str = serde_json::to_string_pretty(&serde_json::Value::Object(theme_obj))?;
+    std::fs::write(&theme_path, &json_str)?;
+
+    v.success(&format!(
+        "Generated {theme_path} ({} tokens, {} light/dark pairs)",
+        flat.len(),
+        pairs.len()
+    ));
+    Ok(())
+}
+
+fn first_group(path: &str) -> (String, String) {
+    if let Some(pos) = path.find('.') {
+        (path[..pos].to_string(), path[pos + 1..].to_string())
+    } else {
+        (path.to_string(), String::new())
+    }
+}
+
+fn make_token_entry(value: &str, token_type: Option<&str>) -> serde_json::Value {
+    let mut entry = serde_json::Map::new();
+    entry.insert("$value".to_string(), serde_json::json!(value));
+    if let Some(t) = token_type {
+        entry.insert("$type".to_string(), serde_json::json!(t));
+    }
+    serde_json::Value::Object(entry)
 }
 
 async fn cmd_theme_preview(

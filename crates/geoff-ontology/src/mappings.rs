@@ -85,7 +85,10 @@ impl MappingRegistry {
             ("isPartOf", "https://schema.org/isPartOf"),
             ("license", "https://schema.org/license"),
             ("inLanguage", "https://schema.org/inLanguage"),
-            ("programmingLanguage", "https://schema.org/programmingLanguage"),
+            (
+                "programmingLanguage",
+                "https://schema.org/programmingLanguage",
+            ),
         ];
         for (name, iri) in defaults {
             self.properties

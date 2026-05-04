@@ -278,6 +278,7 @@ mod tests {
             devspaces: Default::default(),
             build: Default::default(),
             linked_data: Default::default(),
+            design: Default::default(),
         };
 
         let opts = HashMap::new();
@@ -308,6 +309,7 @@ mod tests {
             devspaces: Default::default(),
             build: Default::default(),
             linked_data: Default::default(),
+            design: Default::default(),
         };
 
         let store = geoff_graph::store::ContentStore::new().expect("failed to create store");

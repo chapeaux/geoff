@@ -149,6 +149,15 @@ impl Default for LinkedDataConfig {
     }
 }
 
+/// Design system token configuration.
+/// Points to external token files (e.g. from node_modules) that provide
+/// the raw primitives a theme is built from.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DesignSystemConfig {
+    #[serde(default)]
+    pub tokens: Vec<String>,
+}
+
 /// Dev Spaces configuration for "Edit Source Code" button.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DevSpacesConfig {
@@ -181,6 +190,8 @@ pub struct SiteConfig {
     pub build: BuildConfig,
     #[serde(default)]
     pub linked_data: LinkedDataConfig,
+    #[serde(default)]
+    pub design: DesignSystemConfig,
 }
 
 /// URL style for generated pages.
