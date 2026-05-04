@@ -81,6 +81,11 @@ impl MappingRegistry {
             ("language", "http://purl.org/dc/terms/language"),
             ("about", "https://schema.org/about"),
             ("publisher", "https://schema.org/publisher"),
+            ("creator", "https://schema.org/creator"),
+            ("isPartOf", "https://schema.org/isPartOf"),
+            ("license", "https://schema.org/license"),
+            ("inLanguage", "https://schema.org/inLanguage"),
+            ("programmingLanguage", "https://schema.org/programmingLanguage"),
         ];
         for (name, iri) in defaults {
             self.properties
