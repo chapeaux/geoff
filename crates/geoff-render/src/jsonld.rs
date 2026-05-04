@@ -30,59 +30,59 @@ pub fn build_jsonld_from_graph(
         && let Some(rows) = results.as_array()
     {
         for row in rows {
-                let raw_pred = match row.get("p").and_then(|v| v.as_str()) {
-                    Some(p) => p,
-                    None => continue,
-                };
-                let pred = raw_pred
-                    .strip_prefix('<')
-                    .and_then(|s| s.strip_suffix('>'))
-                    .unwrap_or(raw_pred);
-                let raw_obj = match row.get("o").and_then(|v| v.as_str()) {
-                    Some(o) => o,
-                    None => continue,
-                };
-                // Strip angle brackets from IRI serialization (e.g. "<https://...>" → "https://...")
-                let obj_val = raw_obj
-                    .strip_prefix('<')
-                    .and_then(|s| s.strip_suffix('>'))
-                    .unwrap_or(raw_obj);
+            let raw_pred = match row.get("p").and_then(|v| v.as_str()) {
+                Some(p) => p,
+                None => continue,
+            };
+            let pred = raw_pred
+                .strip_prefix('<')
+                .and_then(|s| s.strip_suffix('>'))
+                .unwrap_or(raw_pred);
+            let raw_obj = match row.get("o").and_then(|v| v.as_str()) {
+                Some(o) => o,
+                None => continue,
+            };
+            // Strip angle brackets from IRI serialization (e.g. "<https://...>" → "https://...")
+            let obj_val = raw_obj
+                .strip_prefix('<')
+                .and_then(|s| s.strip_suffix('>'))
+                .unwrap_or(raw_obj);
 
-                // Skip internal geoff predicates
-                if pred.starts_with("urn:geoff:") {
-                    continue;
-                }
+            // Skip internal geoff predicates
+            if pred.starts_with("urn:geoff:") {
+                continue;
+            }
 
-                // Handle rdf:type specially
-                if pred == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-                    || pred == "https://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-                {
-                    let type_name =
-                        compact_for_jsonld(obj_val, default_vocab, registry, &mut used_prefixes);
-                    obj.insert("@type".into(), json!(type_name));
-                    continue;
-                }
+            // Handle rdf:type specially
+            if pred == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+                || pred == "https://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+            {
+                let type_name =
+                    compact_for_jsonld(obj_val, default_vocab, registry, &mut used_prefixes);
+                obj.insert("@type".into(), json!(type_name));
+                continue;
+            }
 
-                let key = compact_for_jsonld(pred, default_vocab, registry, &mut used_prefixes);
+            let key = compact_for_jsonld(pred, default_vocab, registry, &mut used_prefixes);
 
-                // Special handling for author → Person wrapper
-                if key == "author" || key == "schema:author" {
-                    obj.insert(key, json!({ "@type": "Person", "name": obj_val }));
-                    continue;
-                }
+            // Special handling for author → Person wrapper
+            if key == "author" || key == "schema:author" {
+                obj.insert(key, json!({ "@type": "Person", "name": obj_val }));
+                continue;
+            }
 
-                // Try to parse as number or bool for typed output
-                let value = if let Ok(n) = obj_val.parse::<i64>() {
-                    json!(n)
-                } else if let Ok(n) = obj_val.parse::<f64>() {
-                    json!(n)
-                } else if obj_val == "true" || obj_val == "false" {
-                    json!(obj_val == "true")
-                } else {
-                    json!(obj_val)
-                };
+            // Try to parse as number or bool for typed output
+            let value = if let Ok(n) = obj_val.parse::<i64>() {
+                json!(n)
+            } else if let Ok(n) = obj_val.parse::<f64>() {
+                json!(n)
+            } else if obj_val == "true" || obj_val == "false" {
+                json!(obj_val == "true")
+            } else {
+                json!(obj_val)
+            };
 
-                obj.insert(key, value);
+            obj.insert(key, value);
         }
     }
 
