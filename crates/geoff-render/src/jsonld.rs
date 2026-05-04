@@ -13,9 +13,7 @@ pub fn build_jsonld_from_graph(
     default_vocab: &str,
     registry: &MappingRegistry,
 ) -> Value {
-    let query = format!(
-        "SELECT ?p ?o WHERE {{ GRAPH <{page_uri}> {{ <{page_uri}> ?p ?o }} }}"
-    );
+    let query = format!("SELECT ?p ?o WHERE {{ GRAPH <{page_uri}> {{ <{page_uri}> ?p ?o }} }}");
 
     let mut obj = Map::new();
     let mut used_prefixes: std::collections::BTreeMap<String, String> =
@@ -28,9 +26,10 @@ pub fn build_jsonld_from_graph(
     );
     obj.insert("@id".into(), json!(page_id));
 
-    if let Ok(results) = store.query_to_json(&query) {
-        if let Some(rows) = results.as_array() {
-            for row in rows {
+    if let Ok(results) = store.query_to_json(&query)
+        && let Some(rows) = results.as_array()
+    {
+        for row in rows {
                 let raw_pred = match row.get("p").and_then(|v| v.as_str()) {
                     Some(p) => p,
                     None => continue,
@@ -58,7 +57,8 @@ pub fn build_jsonld_from_graph(
                 if pred == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
                     || pred == "https://www.w3.org/1999/02/22-rdf-syntax-ns#type"
                 {
-                    let type_name = compact_for_jsonld(obj_val, default_vocab, registry, &mut used_prefixes);
+                    let type_name =
+                        compact_for_jsonld(obj_val, default_vocab, registry, &mut used_prefixes);
                     obj.insert("@type".into(), json!(type_name));
                     continue;
                 }
@@ -67,10 +67,7 @@ pub fn build_jsonld_from_graph(
 
                 // Special handling for author → Person wrapper
                 if key == "author" || key == "schema:author" {
-                    obj.insert(
-                        key,
-                        json!({ "@type": "Person", "name": obj_val }),
-                    );
+                    obj.insert(key, json!({ "@type": "Person", "name": obj_val }));
                     continue;
                 }
 
@@ -86,7 +83,6 @@ pub fn build_jsonld_from_graph(
                 };
 
                 obj.insert(key, value);
-            }
         }
     }
 

@@ -47,14 +47,14 @@ pub fn split_frontmatter(
     Ok((frontmatter, body))
 }
 
+/// Parsed frontmatter: (full TOML value, [rdf.custom] fields, [data] fields).
+pub type FrontmatterResult = (toml::Value, HashMap<String, JsonValue>, HashMap<String, JsonValue>);
+
 /// Parse TOML frontmatter, extracting standard fields, `[rdf.custom]` entries,
 /// and `[data]` entries for linked data with friendly names.
 pub fn parse_frontmatter(
     toml_str: &str,
-) -> std::result::Result<
-    (toml::Value, HashMap<String, JsonValue>, HashMap<String, JsonValue>),
-    Box<dyn std::error::Error>,
-> {
+) -> std::result::Result<FrontmatterResult, Box<dyn std::error::Error>> {
     let value: toml::Value = toml::from_str(toml_str)?;
 
     let mut rdf_fields = HashMap::new();

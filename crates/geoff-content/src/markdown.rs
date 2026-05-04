@@ -73,9 +73,7 @@ pub fn rewrite_rdfa_links(html: &str, registry: &MappingRegistry) -> String {
                         let end_pos = content_start + close_offset + "</a>".len();
 
                         let resolved = resolve_rdfa_property(property_name, registry);
-                        result.push_str(&format!(
-                            "<span property=\"{resolved}\">{text}</span>"
-                        ));
+                        result.push_str(&format!("<span property=\"{resolved}\">{text}</span>"));
                         pos = end_pos;
                         continue;
                     }

@@ -83,7 +83,9 @@ impl MappingRegistry {
             ("publisher", "https://schema.org/publisher"),
         ];
         for (name, iri) in defaults {
-            self.properties.entry(name.to_string()).or_insert_with(|| iri.to_string());
+            self.properties
+                .entry(name.to_string())
+                .or_insert_with(|| iri.to_string());
         }
     }
 
@@ -132,10 +134,7 @@ impl MappingRegistry {
 
     /// Returns all active prefixes (built-in + user-declared).
     pub fn all_prefixes(&self) -> Vec<(&str, &str)> {
-        let mut result: Vec<(&str, &str)> = KNOWN_PREFIXES
-            .iter()
-            .map(|&(p, ns)| (p, ns))
-            .collect();
+        let mut result: Vec<(&str, &str)> = KNOWN_PREFIXES.iter().map(|&(p, ns)| (p, ns)).collect();
         for (p, ns) in &self.extra_prefixes {
             result.push((p.as_str(), ns.as_str()));
         }
@@ -278,7 +277,10 @@ mod tests {
     fn extra_prefixes_expand_and_compact() {
         let mut registry = MappingRegistry::new();
         registry.add_prefixes(HashMap::from([
-            ("skos".to_string(), "http://www.w3.org/2004/02/skos/core#".to_string()),
+            (
+                "skos".to_string(),
+                "http://www.w3.org/2004/02/skos/core#".to_string(),
+            ),
             ("org".to_string(), "http://www.w3.org/ns/org#".to_string()),
         ]));
 
@@ -294,9 +296,10 @@ mod tests {
     #[test]
     fn all_prefixes_includes_builtins_and_extras() {
         let mut registry = MappingRegistry::new();
-        registry.add_prefixes(HashMap::from([
-            ("skos".to_string(), "http://www.w3.org/2004/02/skos/core#".to_string()),
-        ]));
+        registry.add_prefixes(HashMap::from([(
+            "skos".to_string(),
+            "http://www.w3.org/2004/02/skos/core#".to_string(),
+        )]));
         let prefixes = registry.all_prefixes();
         assert!(prefixes.iter().any(|(p, _)| *p == "schema"));
         assert!(prefixes.iter().any(|(p, _)| *p == "skos"));

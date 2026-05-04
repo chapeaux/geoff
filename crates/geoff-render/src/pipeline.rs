@@ -91,12 +91,15 @@ pub struct IngestResult {
 /// Returns parsed pages ready for rendering, build statistics, and a page index
 /// containing metadata for ALL pages (including those skipped by incremental builds).
 /// Call this, then run plugin hooks (e.g. on_graph_updated), then call render_pages.
+/// Result of content ingestion: (pages to render, build stats, page index for all pages).
+pub type IngestOutput = (Vec<ParsedPage>, BuildStats, Vec<serde_json::Value>);
+
 pub fn ingest_content(
     site_root: &Utf8Path,
     config: &SiteConfig,
     store: &ContentStore,
     cache: Option<&BuildCache>,
-) -> std::result::Result<(Vec<ParsedPage>, BuildStats, Vec<serde_json::Value>), Box<dyn std::error::Error>> {
+) -> std::result::Result<IngestOutput, Box<dyn std::error::Error>> {
     let content_dir = site_root.join(&config.content_dir);
 
     let mappings_path = site_root.join("ontology/mappings.toml");
@@ -180,7 +183,7 @@ pub fn render_pages(
     to_render: &[ParsedPage],
     config: &SiteConfig,
     renderer: &SiteRenderer,
-    skipped: usize,
+    _skipped: usize,
 ) -> std::result::Result<Vec<BuiltPage>, Box<dyn std::error::Error>> {
     let render_count = AtomicUsize::new(0);
     let total_to_render = to_render.len();
@@ -419,7 +422,10 @@ fn ingest_triples_only(
         store.load_turtle_into(&sidecar_path, graph_name)?;
     }
 
-    Ok(Some(build_page_entry_from_frontmatter(&frontmatter, &page_url)))
+    Ok(Some(build_page_entry_from_frontmatter(
+        &frontmatter,
+        &page_url,
+    )))
 }
 
 /// Default type mappings used when the mapping registry has no entry.
@@ -1253,11 +1259,26 @@ description = "A test project"
         let pages = build_site(site_root, &config, &store, &renderer).unwrap();
         assert_eq!(pages.len(), 1);
         let html = &pages[0].html;
-        assert!(html.contains("url=/about.html"), "page_url should be /about.html, got: {html}");
-        assert!(html.contains("nav=about"), "frontmatter.navSection should be 'about', got: {html}");
-        assert!(html.contains("order=2"), "frontmatter.order should be 2, got: {html}");
-        assert!(html.contains("heading=Learn More"), "frontmatter.heading should be available, got: {html}");
-        assert!(html.contains("title=About Us"), "frontmatter.title should also be accessible, got: {html}");
+        assert!(
+            html.contains("url=/about.html"),
+            "page_url should be /about.html, got: {html}"
+        );
+        assert!(
+            html.contains("nav=about"),
+            "frontmatter.navSection should be 'about', got: {html}"
+        );
+        assert!(
+            html.contains("order=2"),
+            "frontmatter.order should be 2, got: {html}"
+        );
+        assert!(
+            html.contains("heading=Learn More"),
+            "frontmatter.heading should be available, got: {html}"
+        );
+        assert!(
+            html.contains("title=About Us"),
+            "frontmatter.title should also be accessible, got: {html}"
+        );
     }
 
     #[test]
@@ -1465,9 +1486,7 @@ description = "A test project"
 
         // Verify schema:author resolved via expand_iri
         let results = store
-            .query_to_json(
-                "SELECT ?val WHERE { GRAPH ?g { ?s <https://schema.org/author> ?val } }",
-            )
+            .query_to_json("SELECT ?val WHERE { GRAPH ?g { ?s <https://schema.org/author> ?val } }")
             .unwrap();
         let arr = results.as_array().unwrap();
         assert_eq!(arr.len(), 1, "schema:author should expand to full IRI");
@@ -1480,7 +1499,11 @@ description = "A test project"
             )
             .unwrap();
         let arr = results.as_array().unwrap();
-        assert_eq!(arr.len(), 1, "unmapped key should use urn:geoff:meta: fallback");
+        assert_eq!(
+            arr.len(),
+            1,
+            "unmapped key should use urn:geoff:meta: fallback"
+        );
         assert_eq!(arr[0]["val"], "some value");
     }
 
@@ -1553,16 +1576,22 @@ difficulty = "intermediate"
             )
             .unwrap();
         let arr = results.as_array().unwrap();
-        assert_eq!(arr.len(), 1, "wordCount should be mapped to schema:wordCount");
+        assert_eq!(
+            arr.len(),
+            1,
+            "wordCount should be mapped to schema:wordCount"
+        );
 
         // Verify unmapped key falls back to urn:geoff:meta:difficulty
         let results = store
-            .query_to_json(
-                "SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:meta:difficulty> ?val } }",
-            )
+            .query_to_json("SELECT ?val WHERE { GRAPH ?g { ?s <urn:geoff:meta:difficulty> ?val } }")
             .unwrap();
         let arr = results.as_array().unwrap();
-        assert_eq!(arr.len(), 1, "difficulty should fall back to urn:geoff:meta:");
+        assert_eq!(
+            arr.len(),
+            1,
+            "difficulty should fall back to urn:geoff:meta:"
+        );
         assert_eq!(arr[0]["val"], "intermediate");
     }
 

@@ -104,8 +104,18 @@ impl SiteRenderer {
 
     fn register_page_functions(tera: &mut Tera) -> Arc<RwLock<Vec<serde_json::Value>>> {
         let page_index = Arc::new(RwLock::new(Vec::new()));
-        tera.register_function("pages", PagesFunction { index: page_index.clone() });
-        tera.register_function("tree", TreeFunction { index: page_index.clone() });
+        tera.register_function(
+            "pages",
+            PagesFunction {
+                index: page_index.clone(),
+            },
+        );
+        tera.register_function(
+            "tree",
+            TreeFunction {
+                index: page_index.clone(),
+            },
+        );
         page_index
     }
 
@@ -426,10 +436,7 @@ struct RdfaPrefixFunction {
 }
 
 impl tera::Function for RdfaPrefixFunction {
-    fn call(
-        &self,
-        _args: &HashMap<String, tera::Value>,
-    ) -> tera::Result<tera::Value> {
+    fn call(&self, _args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
         let mut parts = Vec::new();
         for (prefix, namespace) in self.registry.all_prefixes() {
             if prefix == "geoff" || prefix == "rdf" || prefix == "rdfs" {
@@ -437,7 +444,10 @@ impl tera::Function for RdfaPrefixFunction {
             }
             parts.push(format!("{prefix}: {namespace}"));
         }
-        Ok(tera::Value::String(format!("prefix=\"{}\"", parts.join(" "))))
+        Ok(tera::Value::String(format!(
+            "prefix=\"{}\"",
+            parts.join(" ")
+        )))
     }
 
     fn is_safe(&self) -> bool {
@@ -451,10 +461,7 @@ struct RdfaPropFunction {
 }
 
 impl tera::Function for RdfaPropFunction {
-    fn call(
-        &self,
-        args: &HashMap<String, tera::Value>,
-    ) -> tera::Result<tera::Value> {
+    fn call(&self, args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
         let name = args
             .get("name")
             .and_then(|v| v.as_str())
@@ -476,14 +483,8 @@ struct RdfaMetaFunction {
 }
 
 impl tera::Function for RdfaMetaFunction {
-    fn call(
-        &self,
-        args: &HashMap<String, tera::Value>,
-    ) -> tera::Result<tera::Value> {
-        let page_uri = args
-            .get("page_uri")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+    fn call(&self, args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+        let page_uri = args.get("page_uri").and_then(|v| v.as_str()).unwrap_or("");
 
         if page_uri.is_empty() {
             return Ok(tera::Value::String(String::new()));
@@ -495,31 +496,29 @@ impl tera::Function for RdfaMetaFunction {
             "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
         ];
 
-        let query = format!(
-            "SELECT ?p ?o WHERE {{ GRAPH <{page_uri}> {{ <{page_uri}> ?p ?o }} }}"
-        );
+        let query = format!("SELECT ?p ?o WHERE {{ GRAPH <{page_uri}> {{ <{page_uri}> ?p ?o }} }}");
 
         let mut metas = Vec::new();
-        if let Ok(results) = self.store.query_to_json(&query) {
-            if let Some(rows) = results.as_array() {
-                for row in rows {
-                    let pred = match row.get("p").and_then(|v| v.as_str()) {
-                        Some(p) => p.trim_start_matches('<').trim_end_matches('>'),
-                        None => continue,
-                    };
-                    let obj = match row.get("o").and_then(|v| v.as_str()) {
-                        Some(o) => o,
-                        None => continue,
-                    };
+        if let Ok(results) = self.store.query_to_json(&query)
+            && let Some(rows) = results.as_array()
+        {
+            for row in rows {
+                let pred = match row.get("p").and_then(|v| v.as_str()) {
+                    Some(p) => p.trim_start_matches('<').trim_end_matches('>'),
+                    None => continue,
+                };
+                let obj = match row.get("o").and_then(|v| v.as_str()) {
+                    Some(o) => o,
+                    None => continue,
+                };
 
-                    if pred.starts_with("urn:geoff:") || skip_props.contains(&pred) {
-                        continue;
-                    }
-
-                    let prop = self.registry.compact_iri(pred);
-                    let val = obj.replace('"', "&quot;");
-                    metas.push(format!("<meta property=\"{prop}\" content=\"{val}\">"));
+                if pred.starts_with("urn:geoff:") || skip_props.contains(&pred) {
+                    continue;
                 }
+
+                let prop = self.registry.compact_iri(pred);
+                let val = obj.replace('"', "&quot;");
+                metas.push(format!("<meta property=\"{prop}\" content=\"{val}\">"));
             }
         }
 
@@ -647,10 +646,7 @@ impl tera::Function for TreeFunction {
             .index
             .read()
             .map_err(|e| tera::Error::msg(format!("page index lock: {e}")))?;
-        let root = args
-            .get("root")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
         let sort_key = args.get("sort").and_then(|v| v.as_str());
         let depth = args
             .get("depth")

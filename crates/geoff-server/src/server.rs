@@ -73,7 +73,7 @@ pub async fn run(
         SiteRenderer::new(&template_dir)?
     };
     renderer.register_sparql_function(Arc::clone(&store));
-    renderer.register_component_function(site_root.join("components").into());
+    renderer.register_component_function(site_root.join("components"));
     renderer.register_devspaces_function(&config.devspaces);
 
     // Register RDFa template helpers
@@ -227,7 +227,7 @@ pub async fn run(
                         };
                         renderer.register_sparql_function(Arc::clone(&state.store));
                         renderer
-                            .register_component_function(state.site_root.join("components").into());
+                            .register_component_function(state.site_root.join("components"));
                         renderer.register_devspaces_function(&state.config.devspaces);
                         if state.config.linked_data.rdfa {
                             let mappings_path = state.site_root.join("ontology/mappings.toml");
@@ -279,13 +279,10 @@ pub async fn run(
                             map.insert(url_path, page.html);
                         }
 
-                        if state.config.search.enabled {
-                            if let Ok(nt) = state.store.export_search_ntriples() {
-                                map.insert(
-                                    format!("/{}", state.config.search.output),
-                                    nt,
-                                );
-                            }
+                        if state.config.search.enabled
+                            && let Ok(nt) = state.store.export_search_ntriples()
+                        {
+                            map.insert(format!("/{}", state.config.search.output), nt);
                         }
 
                         Ok((renderer, map))
@@ -711,10 +708,10 @@ async fn build_with_hooks_async(
     }
 
     // Generate search index so it's available during dev
-    if config.search.enabled {
-        if let Ok(nt) = store.export_search_ntriples() {
-            map.insert(format!("/{}", config.search.output), nt);
-        }
+    if config.search.enabled
+        && let Ok(nt) = store.export_search_ntriples()
+    {
+        map.insert(format!("/{}", config.search.output), nt);
     }
 
     Ok(map)

@@ -279,10 +279,6 @@ fn json_to_css_value(val: &Value) -> String {
     }
 }
 
-fn path_to_var_name(raw_path: &str) -> String {
-    path_to_var_name_with_prefix(raw_path, None)
-}
-
 fn path_to_var_name_with_prefix(raw_path: &str, prefix: Option<&str>) -> String {
     // Strip trailing "._" (Style Dictionary root token convention)
     let path = raw_path.strip_suffix("._").unwrap_or(raw_path);
@@ -479,10 +475,16 @@ mod tests {
     #[test]
     fn camel_case_to_kebab() {
         assert_eq!(
-            path_to_var_name("typography.body.fontSize"),
+            path_to_var_name_with_prefix("typography.body.fontSize", None),
             "--typography-body-font-size"
         );
-        assert_eq!(path_to_var_name("color.primary"), "--color-primary");
-        assert_eq!(path_to_var_name("spacing.md"), "--spacing-md");
+        assert_eq!(
+            path_to_var_name_with_prefix("color.primary", None),
+            "--color-primary"
+        );
+        assert_eq!(
+            path_to_var_name_with_prefix("spacing.md", None),
+            "--spacing-md"
+        );
     }
 }

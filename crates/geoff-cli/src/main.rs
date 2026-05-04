@@ -392,7 +392,6 @@ async fn cmd_build(
     use geoff_core::config::{PluginRuntime, SiteConfig};
     use geoff_graph::store::ContentStore;
     use geoff_plugin::registry::PluginRegistry;
-    use geoff_render::pipeline::build_site_incremental;
     use geoff_render::renderer::SiteRenderer;
 
     let start = std::time::Instant::now();
@@ -424,15 +423,14 @@ async fn cmd_build(
     };
     let store_arc = Arc::new(store.clone());
     renderer.register_sparql_function(store_arc.clone());
-    renderer.register_component_function(path.join("components").into());
+    renderer.register_component_function(path.join("components"));
     renderer.register_devspaces_function(&config.devspaces);
 
     // Register RDFa template helpers if enabled
     if config.linked_data.rdfa {
         let mappings_path = path.join("ontology/mappings.toml");
         let mut rdfa_registry =
-            geoff_ontology::mappings::MappingRegistry::load(&mappings_path)
-                .unwrap_or_default();
+            geoff_ontology::mappings::MappingRegistry::load(&mappings_path).unwrap_or_default();
         if !config.linked_data.prefixes.is_empty() {
             rdfa_registry.add_prefixes(config.linked_data.prefixes.clone());
         }
