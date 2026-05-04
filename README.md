@@ -112,6 +112,7 @@ Starts a dev server on `http://localhost:3000` with:
 | `geoff shapes [path]` | Generate starter SHACL shapes from existing content |
 | `geoff theme preview [path]` | Preview the current theme with sample content |
 | `geoff theme edit [path]` | Visual theme editor with live preview |
+| `geoff theme generate <name>` | Generate a theme from design system tokens |
 
 Global flags: `--verbose`, `--quiet`, `--version`
 
@@ -341,7 +342,7 @@ my-site/
 │   │   ├── tokens.json     # Base theme (DTCG format)
 │   │   └── tokens.dark.json
 │   └── my-brand/
-│       └── tokens.json     # Overrides — inherits from default
+│       └── theme.json      # Generated from [design] system tokens
 ├── ontology/
 │   ├── mappings.toml       # Field → IRI mappings
 │   └── shapes/             # SHACL validation shapes
@@ -384,6 +385,9 @@ default_vocab = "https://schema.org/"
 
 [linked_data.prefixes]
 skos = "http://www.w3.org/2004/02/skos/core#"
+
+[design]
+tokens = ["./node_modules/@rhds/tokens/json/rhds.tokens.json"]
 ```
 
 ## Theming
@@ -474,6 +478,35 @@ geoff theme preview
 
 Generates a preview site with color swatches, typography specimens, spacing scales, and every template variation rendered with sample content.
 
+### Design System Tokens
+
+Themes can be generated from external design system token files — separate from and independent of any theme. Configure design system token sources in `geoff.toml`:
+
+```toml
+[design]
+tokens = [
+  "./node_modules/@rhds/tokens/json/rhds.tokens.json",
+  "./vendor/custom-spacing.json"
+]
+```
+
+Multiple files merge in order (later overrides earlier). Then generate a theme:
+
+```sh
+geoff theme generate my-brand
+# ✓ Generated themes/my-brand/theme.json (342 tokens, 48 light/dark pairs)
+```
+
+The generated `theme.json` references all design system tokens and auto-detects `-on-light`/`-on-dark` pairs (both suffix convention `color.brand-on-light` and group convention `color.brand.on.light`), producing `light-dark()` aggregates with fallback values:
+
+```css
+--color-brand-on-light: #e00;
+--color-brand-on-dark: #f66;
+--color-brand: light-dark(var(--color-brand-on-light, #e00), var(--color-brand-on-dark, #f66));
+```
+
+The design system exists independently — multiple themes can reference the same system. The generated `theme.json` is a starting point that can be customized: rename tokens, add semantic aliases, override values.
+
 ## Client-Side Search
 
 Enable SPARQL-powered search in the browser:
@@ -488,7 +521,9 @@ enabled = true
 <geoff-search></geoff-search>
 ```
 
-At build time, Geoff exports the RDF graph as N-Triples. The `<geoff-search>` web component lazy-loads Oxigraph WASM and runs real SPARQL queries against it — the same engine and same data model that built the site. Supports structured queries like `geoff:stage=develop` alongside plain text search.
+At build time, Geoff exports the RDF graph as N-Triples. The `<geoff-search>` web component lazy-loads Oxigraph WASM and runs real SPARQL queries against it — the same engine and same data model that built the site. The search index is also available during `geoff serve`.
+
+Search supports structured query syntax: `foo bar` (implicit AND), `"exact phrase"` (quoted), `foo OR bar`, and explicit `AND`. The component follows the ARIA combobox pattern with keyboard navigation (Arrow keys, Enter, Escape) and positions results using CSS anchor positioning with a fallback for older browsers.
 
 ## Architecture
 
