@@ -190,6 +190,7 @@ Every page template has access to:
 | `date`, `author`, `description`, `tags` | Standard frontmatter fields |
 | `frontmatter` | Full frontmatter as a JSON object — access any field via `{{ frontmatter.myField }}` |
 | `rdfa_attrs` | Pre-built RDFa attributes for the page container (see Linked Data section) |
+| `critical_css` | Inlined CSS from `static/critical*.css` files (see Critical CSS section) |
 | `json_ld` | JSON-LD `<script>` block |
 | `config.title` | Site title |
 
@@ -447,6 +448,27 @@ max_width = 1920
 ```
 
 Token groups with `-critical` in the name are inlined in `<head>`. Everything else loads as a deferred external stylesheet via `<link rel="preload">`. Light/dark mode uses the CSS `light-dark()` function with `-on-light`/`-on-dark` primitives.
+
+### Critical CSS from Files
+
+CSS files in `static/` following the critical naming convention are automatically inlined into pages via the `{{ critical_css }}` template variable:
+
+```
+static/
+├── critical.css                # Inlined on ALL pages
+├── critical-blog-page.css      # Inlined only on pages using blog-page.html
+├── critical-doc-sidebar.css    # Inlined only on pages using doc-sidebar.html
+└── styles.css                  # Regular CSS (not inlined)
+```
+
+Combine with token-generated critical CSS in a single `<style>` block:
+
+```html
+<style>
+  :root { {{ theme_css(critical=true) | safe }} }
+  {{ critical_css | safe }}
+</style>
+```
 
 ### Theme Inheritance
 

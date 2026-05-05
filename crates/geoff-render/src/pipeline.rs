@@ -1852,11 +1852,7 @@ difficulty = "intermediate"
         // Global critical CSS
         let static_dir = site_root.join("static");
         std::fs::create_dir_all(&static_dir).unwrap();
-        std::fs::write(
-            static_dir.join("critical.css"),
-            "body { margin: 0; }",
-        )
-        .unwrap();
+        std::fs::write(static_dir.join("critical.css"), "body { margin: 0; }").unwrap();
         // Template-specific critical CSS
         std::fs::write(
             static_dir.join("critical-blog.css"),
@@ -1873,8 +1869,14 @@ difficulty = "intermediate"
         let pages = build_site(site_root, &config, &store, &renderer).unwrap();
         assert_eq!(pages.len(), 2);
 
-        let about = pages.iter().find(|p| p.output_path.contains("about")).unwrap();
-        let post = pages.iter().find(|p| p.output_path.contains("post")).unwrap();
+        let about = pages
+            .iter()
+            .find(|p| p.output_path.contains("about"))
+            .unwrap();
+        let post = pages
+            .iter()
+            .find(|p| p.output_path.contains("post"))
+            .unwrap();
 
         // Global critical CSS appears on both pages
         assert!(
