@@ -52,6 +52,7 @@ pub struct ParsedPage {
     pub page_url: String,
     pub page_uri: String,
     pub rdfa_attrs: String,
+    pub critical_css: String,
     pub content_html: String,
     pub json_ld_str: String,
     pub template: String,
@@ -174,7 +175,65 @@ pub fn ingest_content(
         }
     }
 
+    // Populate critical CSS per page from static/critical*.css files
+    let critical_files = scan_critical_css(&site_root.join("static"));
+    if !critical_files.is_empty() {
+        for page in &mut to_render {
+            page.critical_css = build_critical_css_for_page(&page.template, &critical_files);
+        }
+    }
+
     Ok((to_render, stats, page_index))
+}
+
+/// Scan the static directory for critical CSS files.
+/// Returns a list of (category, css_content) where category is:
+/// - `"*"` for `critical.css` (global, inlined on all pages)
+/// - template stem for `critical-{stem}.css` (template-specific)
+fn scan_critical_css(static_dir: &Utf8Path) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    if !static_dir.exists() {
+        return files;
+    }
+
+    let Ok(entries) = std::fs::read_dir(static_dir) else {
+        return files;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+
+        if name == "critical.css"
+            && let Ok(css) = std::fs::read_to_string(&path)
+        {
+            files.push(("*".to_string(), css));
+        } else if let Some(stem) = name.strip_prefix("critical-")
+            && let Some(stem) = stem.strip_suffix(".css")
+            && let Ok(css) = std::fs::read_to_string(&path)
+        {
+            files.push((stem.to_string(), css));
+        }
+    }
+
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files
+}
+
+/// Build the critical CSS string for a page based on its template.
+fn build_critical_css_for_page(template: &str, critical_files: &[(String, String)]) -> String {
+    let template_stem = template.strip_suffix(".html").unwrap_or(template);
+    let mut css = String::new();
+    for (category, content) in critical_files {
+        if category == "*" || category == template_stem {
+            css.push_str(content);
+            css.push('\n');
+        }
+    }
+    css
 }
 
 /// Phase 2: Render parsed pages in parallel using Rayon.
@@ -199,6 +258,7 @@ pub fn render_pages(
                 page_url: &parsed.page_url,
                 page_uri: &parsed.page_uri,
                 rdfa_attrs: &parsed.rdfa_attrs,
+                critical_css: &parsed.critical_css,
                 date: parsed.date.as_deref(),
                 author: parsed.author.as_deref(),
                 description: parsed.description.as_deref(),
@@ -362,6 +422,7 @@ fn parse_and_ingest(
         page_url,
         page_uri: page_uri.as_str().to_string(),
         rdfa_attrs,
+        critical_css: String::new(),
         content_html: html,
         json_ld_str,
         template,
@@ -1748,6 +1809,94 @@ difficulty = "intermediate"
         assert!(
             html.contains("resource=\"/about.html\""),
             "rdfa_attrs should include resource, got: {html}"
+        );
+    }
+
+    #[test]
+    fn critical_css_inlined_per_template() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        std::fs::create_dir_all(&content_dir).unwrap();
+        std::fs::write(
+            content_dir.join("about.md"),
+            "+++\ntitle = \"About\"\ntemplate = \"page.html\"\n+++\nAbout\n",
+        )
+        .unwrap();
+        std::fs::write(
+            content_dir.join("post.md"),
+            "+++\ntitle = \"Post\"\ntemplate = \"blog.html\"\n+++\nPost\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(
+            tmpl_dir.join("page.html"),
+            "<style>{{ critical_css | safe }}</style>{{ content | safe }}",
+        )
+        .unwrap();
+        std::fs::write(
+            tmpl_dir.join("blog.html"),
+            "<style>{{ critical_css | safe }}</style>{{ content | safe }}",
+        )
+        .unwrap();
+
+        // Global critical CSS
+        let static_dir = site_root.join("static");
+        std::fs::create_dir_all(&static_dir).unwrap();
+        std::fs::write(
+            static_dir.join("critical.css"),
+            "body { margin: 0; }",
+        )
+        .unwrap();
+        // Template-specific critical CSS
+        std::fs::write(
+            static_dir.join("critical-blog.css"),
+            ".post { max-width: 48rem; }",
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        assert_eq!(pages.len(), 2);
+
+        let about = pages.iter().find(|p| p.output_path.contains("about")).unwrap();
+        let post = pages.iter().find(|p| p.output_path.contains("post")).unwrap();
+
+        // Global critical CSS appears on both pages
+        assert!(
+            about.html.contains("body { margin: 0; }"),
+            "global critical CSS should be in about page, got: {}",
+            about.html
+        );
+        assert!(
+            post.html.contains("body { margin: 0; }"),
+            "global critical CSS should be in post page, got: {}",
+            post.html
+        );
+
+        // Template-specific critical CSS only on matching template
+        assert!(
+            !about.html.contains(".post"),
+            "blog-specific critical CSS should NOT be in about page"
+        );
+        assert!(
+            post.html.contains(".post { max-width: 48rem; }"),
+            "blog-specific critical CSS should be in post page, got: {}",
+            post.html
         );
     }
 }

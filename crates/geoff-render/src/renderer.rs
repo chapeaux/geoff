@@ -395,6 +395,7 @@ pub struct PageContext<'a> {
     pub page_url: &'a str,
     pub page_uri: &'a str,
     pub rdfa_attrs: &'a str,
+    pub critical_css: &'a str,
     pub date: Option<&'a str>,
     pub author: Option<&'a str>,
     pub description: Option<&'a str>,
@@ -410,6 +411,7 @@ pub fn build_page_context(page: &PageContext<'_>) -> Context {
     ctx.insert("page_url", page.page_url);
     ctx.insert("page_uri", page.page_uri);
     ctx.insert("rdfa_attrs", page.rdfa_attrs);
+    ctx.insert("critical_css", page.critical_css);
 
     let mut config = std::collections::HashMap::new();
     config.insert("title", page.site_title);
@@ -875,6 +877,7 @@ mod tests {
             page_url: "/test.html",
             page_uri: "urn:geoff:content:test.md",
             rdfa_attrs: "vocab=\"https://schema.org/\" typeof=\"WebPage\"",
+            critical_css: "",
             date: None,
             author: None,
             description: None,
