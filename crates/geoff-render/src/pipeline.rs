@@ -769,6 +769,29 @@ fn load_design_system_tokens(
     let tokens = geoff_theme::DesignTokens::from_json(&merged.to_string())?;
     let mut flat = tokens.flatten();
     geoff_theme::resolve_references(&mut flat);
+
+    // Check for unresolved references within the design system
+    let unresolved = geoff_theme::find_unresolved(&flat);
+    if !unresolved.is_empty() {
+        let file_list = config
+            .design
+            .tokens
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("    {}. {p}", i + 1))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let ref_list = unresolved
+            .iter()
+            .map(|u| format!("  - token `{}` references `{}`", u.token_path, u.reference))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "Unresolved token references in design system:\n{ref_list}\n\n  Token files loaded:\n{file_list}"
+        )
+        .into());
+    }
+
     Ok(Some(flat))
 }
 
@@ -831,6 +854,31 @@ pub fn load_and_register_theme(
         geoff_theme::resolve_references_with_base(&mut flat, system);
     } else {
         geoff_theme::resolve_references(&mut flat);
+    }
+
+    // 4b. Check for unresolved references
+    let unresolved = geoff_theme::find_unresolved(&flat);
+    if !unresolved.is_empty() {
+        let mut file_hierarchy = Vec::new();
+        for (i, p) in config.design.tokens.iter().enumerate() {
+            file_hierarchy.push(format!("    {}. {p} (design system)", i + 1));
+        }
+        file_hierarchy.push(format!(
+            "    {}. {} (theme)",
+            config.design.tokens.len() + 1,
+            theme_token_file
+        ));
+        let ref_list = unresolved
+            .iter()
+            .map(|u| format!("  - token `{}` references `{}`", u.token_path, u.reference))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "Unresolved token references in {}:\n{ref_list}\n\n  Token files loaded (in order):\n{}",
+            theme_token_file,
+            file_hierarchy.join("\n")
+        )
+        .into());
     }
 
     // 5. Handle dark mode tokens if configured (legacy path, no [design])

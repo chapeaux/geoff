@@ -919,6 +919,27 @@ fn cmd_theme_generate(
     let mut flat = tokens.flatten();
     geoff_theme::resolve_references(&mut flat);
 
+    let unresolved = geoff_theme::find_unresolved(&flat);
+    if !unresolved.is_empty() {
+        let file_list = config
+            .design
+            .tokens
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("    {}. {p}", i + 1))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let ref_list = unresolved
+            .iter()
+            .map(|u| format!("  - token `{}` references `{}`", u.token_path, u.reference))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "Unresolved token references in design system:\n{ref_list}\n\n  Token files loaded:\n{file_list}"
+        )
+        .into());
+    }
+
     v.detail(&format!("Loaded {} design system tokens", flat.len()));
 
     // Detect -on-light/-on-dark pairs (suffix and group conventions)

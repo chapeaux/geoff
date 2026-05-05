@@ -58,6 +58,44 @@ pub fn resolve_references_with_base(
     }
 }
 
+/// An unresolved token reference found after resolution.
+#[derive(Debug, Clone)]
+pub struct UnresolvedRef {
+    /// The token path that contains the broken reference.
+    pub token_path: String,
+    /// The reference string that couldn't be resolved (e.g. `{color.nonexistent}`).
+    pub reference: String,
+}
+
+/// Scan resolved tokens for any remaining `{reference}` strings that weren't resolved.
+/// Returns a list of unresolved references for error reporting.
+pub fn find_unresolved(tokens: &BTreeMap<String, FlatToken>) -> Vec<UnresolvedRef> {
+    let mut errors = Vec::new();
+    for (path, token) in tokens {
+        if let TokenValue::String(s) = &token.value {
+            if is_reference(s) {
+                errors.push(UnresolvedRef {
+                    token_path: path.clone(),
+                    reference: s.clone(),
+                });
+            }
+            // Also check inside light-dark() patterns
+            if s.starts_with("light-dark(") {
+                for part in s.split(", ") {
+                    let part = part.trim_start_matches("light-dark(").trim_end_matches(')');
+                    if is_reference(part) {
+                        errors.push(UnresolvedRef {
+                            token_path: path.clone(),
+                            reference: part.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    errors
+}
+
 pub(crate) fn is_reference(s: &str) -> bool {
     s.starts_with('{') && s.ends_with('}') && s.len() > 2 && !s[1..s.len() - 1].contains('{')
 }
@@ -165,6 +203,60 @@ mod tests {
             TokenValue::String(s) => assert_eq!(s, "#0066cc"),
             _ => panic!("expected string"),
         }
+    }
+
+    #[test]
+    fn find_unresolved_detects_broken_refs() {
+        let json = r##"{
+            "color": {
+                "$type": "color",
+                "primary": { "$value": "{color.nonexistent}" },
+                "valid": { "$value": "#ff0000" }
+            }
+        }"##;
+        let tokens = DesignTokens::from_json(json).unwrap();
+        let mut flat = tokens.flatten();
+        resolve_references(&mut flat);
+
+        let errors = find_unresolved(&flat);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].token_path, "color.primary");
+        assert_eq!(errors[0].reference, "{color.nonexistent}");
+    }
+
+    #[test]
+    fn find_unresolved_empty_when_all_resolved() {
+        let json = r##"{
+            "blue": { "$value": "#0066cc", "$type": "color" },
+            "primary": { "$value": "{blue}", "$type": "color" }
+        }"##;
+        let tokens = DesignTokens::from_json(json).unwrap();
+        let mut flat = tokens.flatten();
+        resolve_references(&mut flat);
+
+        let errors = find_unresolved(&flat);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn find_unresolved_cross_file() {
+        let base_json = r##"{
+            "color": { "$type": "color", "red": { "$value": "#e00" } }
+        }"##;
+        let theme_json = r##"{
+            "brand": { "$type": "color", "primary": { "$value": "{color.missing}" } }
+        }"##;
+
+        let base = DesignTokens::from_json(base_json).unwrap();
+        let base_flat = base.flatten();
+        let theme = DesignTokens::from_json(theme_json).unwrap();
+        let mut theme_flat = theme.flatten();
+        resolve_references_with_base(&mut theme_flat, &base_flat);
+
+        let errors = find_unresolved(&theme_flat);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].token_path, "brand.primary");
+        assert_eq!(errors[0].reference, "{color.missing}");
     }
 
     #[test]
