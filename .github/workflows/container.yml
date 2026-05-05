@@ -7,15 +7,28 @@ on:
 jobs:
   build-push:
     runs-on: ubuntu-latest
+    # Only run if Quay.io credentials are configured
+    env:
+      HAS_QUAY: ${{ secrets.QUAY_USERNAME != '' }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Check credentials
+        if: env.HAS_QUAY != 'true'
+        run: |
+          echo "::warning::Skipping container build — QUAY_USERNAME and QUAY_PASSWORD secrets not configured"
+          exit 0
+
       - name: Login to Quay.io
+        if: env.HAS_QUAY == 'true'
         uses: docker/login-action@v3
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
+
       - name: Build and push
+        if: env.HAS_QUAY == 'true'
         uses: docker/build-push-action@v5
         with:
           push: true
