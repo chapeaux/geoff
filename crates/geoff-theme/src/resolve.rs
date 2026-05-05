@@ -34,8 +34,45 @@ fn resolve_value(
                 value.clone()
             }
         }
+        TokenValue::String(s) if is_light_dark_refs(s) => {
+            // Resolve references inside light-dark({ref}, {ref}) patterns
+            let inner = &s["light-dark(".len()..s.len() - 1];
+            if let Some((light_ref, dark_ref)) = inner.split_once(", ") {
+                let resolved_light = resolve_ref_str(light_ref, all, depth);
+                let resolved_dark = resolve_ref_str(dark_ref, all, depth);
+                TokenValue::String(format!("light-dark({resolved_light}, {resolved_dark})"))
+            } else {
+                value.clone()
+            }
+        }
         _ => value.clone(),
     }
+}
+
+fn resolve_ref_str(s: &str, all: &BTreeMap<String, TokenValue>, depth: usize) -> String {
+    if is_reference(s) {
+        let ref_path = &s[1..s.len() - 1];
+        if let Some(target) = all.get(ref_path) {
+            let resolved = resolve_value(target, all, depth + 1);
+            match resolved {
+                TokenValue::String(v) => return v,
+                TokenValue::Number(n) => return n.to_string(),
+                _ => {}
+            }
+        }
+    }
+    s.to_string()
+}
+
+fn is_light_dark_refs(s: &str) -> bool {
+    if let Some(inner) = s
+        .strip_prefix("light-dark(")
+        .and_then(|s| s.strip_suffix(')'))
+        && let Some((light, dark)) = inner.split_once(", ")
+    {
+        return is_reference(light) || is_reference(dark);
+    }
+    false
 }
 
 /// Resolve `{reference}` strings in token values, checking a base token set first.
@@ -257,6 +294,49 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].token_path, "brand.primary");
         assert_eq!(errors[0].reference, "{color.missing}");
+    }
+
+    #[test]
+    fn resolve_light_dark_refs_with_base() {
+        let base_json = r##"{
+            "surface-critical": {
+                "background": {
+                    "on": {
+                        "$type": "color",
+                        "light": { "$value": "#ffffff" },
+                        "dark": { "$value": "#1a1a1a" }
+                    }
+                }
+            }
+        }"##;
+        let theme_json = r##"{
+            "surface-critical": {
+                "background": {
+                    "$type": "color",
+                    "$value": "light-dark({surface-critical.background.on.light}, {surface-critical.background.on.dark})"
+                }
+            }
+        }"##;
+
+        let base = DesignTokens::from_json(base_json).unwrap();
+        let base_flat = base.flatten();
+        let theme = DesignTokens::from_json(theme_json).unwrap();
+        let mut theme_flat = theme.flatten();
+
+        resolve_references_with_base(&mut theme_flat, &base_flat);
+
+        match &theme_flat["surface-critical.background"].value {
+            TokenValue::String(s) => {
+                assert_eq!(s, "light-dark(#ffffff, #1a1a1a)");
+            }
+            other => panic!("expected string, got {other:?}"),
+        }
+
+        let errors = find_unresolved(&theme_flat);
+        assert!(
+            errors.is_empty(),
+            "should have no unresolved refs: {errors:?}"
+        );
     }
 
     #[test]
