@@ -26,44 +26,41 @@
 const STYLES = `
 geoff-search {
   display: block;
-  anchor-name: --geoff-search;
 }
 .geoff-search-form {
   position: relative;
 }
-.geoff-search-results {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.geoff-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
   z-index: 9999;
   background: var(--geoff-search-bg, #fff);
   border: 1px solid var(--geoff-search-border, #ccc);
   border-radius: var(--geoff-search-radius, 4px);
   box-shadow: var(--geoff-search-shadow, 0 4px 12px rgba(0,0,0,.15));
-  max-height: var(--geoff-search-max-height, 60vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-
-  /* Modern: CSS anchor positioning */
-  position: fixed;
-  position-anchor: --geoff-search;
-  inset-area: block-end span-inline-start;
-  width: anchor-size(inline);
-  margin-block-start: 4px;
-}
-.geoff-search-results:empty {
   display: none;
 }
-/* Fallback for browsers without anchor positioning */
-@supports not (anchor-name: --x) {
-  .geoff-search-results {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    width: auto;
-    margin-top: 4px;
-  }
+.geoff-search-dropdown.is-open {
+  display: block;
+}
+.geoff-search-status {
+  font-size: 0.85em;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--geoff-search-divider, #eee);
+}
+.geoff-search-status:empty {
+  display: none;
+}
+.geoff-search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: var(--geoff-search-max-height, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .geoff-search-result {
   display: block;
@@ -88,18 +85,10 @@ geoff-search {
   opacity: 0.7;
   font-size: 0.85em;
 }
-.geoff-search-status {
-  font-size: 0.85em;
-  opacity: 0.7;
-  min-height: 1.2em;
-}
-@media (prefers-color-scheme: dark) {
-  .geoff-search-results {
-    --geoff-search-bg: #1a1a1a;
-    --geoff-search-border: #444;
-    --geoff-search-divider: #333;
-    --geoff-search-highlight: #2a2a3a;
-  }
+.geoff-search-result time {
+  display: block;
+  font-size: 0.8em;
+  opacity: 0.6;
 }
 `;
 
@@ -137,11 +126,13 @@ class GeoffSearch extends HTMLElement {
             aria-autocomplete="list"
             aria-controls="${this._listboxId}"
             autocomplete="off" />
-          <div class="geoff-search-status" aria-live="polite"></div>
-          <ul class="geoff-search-results"
-            id="${this._listboxId}"
-            role="listbox"
-            aria-label="Search results"></ul>
+          <div class="geoff-search-dropdown">
+            <div class="geoff-search-status" aria-live="polite"></div>
+            <ul class="geoff-search-results"
+              id="${this._listboxId}"
+              role="listbox"
+              aria-label="Search results"></ul>
+          </div>
         </form>
       `;
     }
@@ -243,8 +234,10 @@ class GeoffSearch extends HTMLElement {
 
   _closeResults() {
     const container = this.querySelector('.geoff-search-results');
+    const dropdown = this.querySelector('.geoff-search-dropdown');
     const input = this.querySelector('input');
     if (container) container.innerHTML = '';
+    if (dropdown) dropdown.classList.remove('is-open');
     if (input) input.setAttribute('aria-expanded', 'false');
     input?.removeAttribute('aria-activedescendant');
     this._activeIndex = -1;
@@ -299,12 +292,14 @@ class GeoffSearch extends HTMLElement {
     const limit = parseInt(this.getAttribute('limit') || '20', 10);
 
     const sparql = `
-      SELECT ?s ?title ?desc WHERE {
+      SELECT ?s ?title ?url ?desc ?date WHERE {
         ?s <https://schema.org/name> ?title .
+        OPTIONAL { ?s <https://schema.org/url> ?url }
         OPTIONAL { ?s <https://schema.org/description> ?desc }
+        OPTIONAL { ?s <https://schema.org/datePublished> ?date }
         FILTER(${filter})
       }
-      ORDER BY ?title
+      ORDER BY DESC(?date) ?title
       LIMIT ${limit}
     `;
 
@@ -314,6 +309,8 @@ class GeoffSearch extends HTMLElement {
         ? [...bindings]
         : bindings;
       this._renderResults(arr, query);
+      const dropdown = this.querySelector('.geoff-search-dropdown');
+      if (dropdown) dropdown.classList.add('is-open');
       input.setAttribute('aria-expanded', this._resultCount > 0 ? 'true' : 'false');
     } catch (e) {
       console.error('[geoff-search] query error:', e);
@@ -375,6 +372,16 @@ class GeoffSearch extends HTMLElement {
     return groupFilters.length === 1 ? groupFilters[0] : `(${groupFilters.join(' || ')})`;
   }
 
+  _resolveUrl(row) {
+    const url = row.get('url')?.value;
+    if (url) return url;
+    const s = row.get('s')?.value || '';
+    if (s.startsWith('urn:geoff:content:')) {
+      return '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '.html').replace(/index\.html$/, '');
+    }
+    return '#';
+  }
+
   _renderResults(bindings, query) {
     const container = this.querySelector('.geoff-search-results');
 
@@ -390,26 +397,23 @@ class GeoffSearch extends HTMLElement {
     const results = [];
     for (const row of bindings) {
       const title = row.get('title')?.value || 'Untitled';
-      const s = row.get('s')?.value || '';
-      let url = '#';
-      if (s.startsWith('urn:geoff:content:')) {
-        url = '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '/').replace(/index\/$/, '');
-      }
+      const url = this._resolveUrl(row);
       if (seen.has(url)) continue;
       seen.add(url);
       const desc = row.get('desc')?.value || '';
-      const parts = url.replace(/^\//, '').replace(/\/$/, '').split('/');
+      const date = row.get('date')?.value || '';
+      const parts = url.replace(/^\//, '').replace(/\/$/, '').replace(/\.html$/, '').split('/');
       const context = parts.length > 1
         ? parts.slice(0, -1).map(p => p.replace(/-/g, ' ')).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' › ')
         : '';
-      results.push({ title, url, desc, context });
+      results.push({ title, url, desc, date, context });
     }
 
     this._resultCount = results.length;
     this._activeIndex = -1;
     this._setStatus(`${results.length} result${results.length === 1 ? '' : 's'}`);
 
-    container.innerHTML = results.map(({ title, url, desc, context }, i) => {
+    container.innerHTML = results.map(({ title, url, desc, date, context }, i) => {
       const t = this._esc(title);
       const c = this._esc(context);
       const d = this._esc(desc);
@@ -418,6 +422,7 @@ class GeoffSearch extends HTMLElement {
                   data-url="${this._esc(url)}" class="geoff-search-result"
                   tabindex="-1">
         <strong>${t}</strong>
+        ${date ? `<time>${date}</time>` : ''}
         ${c ? `<small class="geoff-search-context">${c}</small>` : ''}
         ${d ? `<small>${d}</small>` : ''}
       </li>`;
@@ -433,7 +438,12 @@ class GeoffSearch extends HTMLElement {
 
   _setStatus(text) {
     const el = this.querySelector('.geoff-search-status');
+    const dropdown = this.querySelector('.geoff-search-dropdown');
     if (el) el.textContent = text;
+    if (dropdown) {
+      if (text) dropdown.classList.add('is-open');
+      else if (!this.querySelector('.geoff-search-result')) dropdown.classList.remove('is-open');
+    }
   }
 
   _esc(str) {
