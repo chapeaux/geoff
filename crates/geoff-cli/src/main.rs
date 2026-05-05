@@ -891,7 +891,7 @@ fn cmd_theme_generate(
     v: Verbosity,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use geoff_core::config::SiteConfig;
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::HashSet;
 
     let config = SiteConfig::from_file(&path.join("geoff.toml"))?;
 
@@ -964,44 +964,28 @@ fn cmd_theme_generate(
 
     v.detail(&format!("Detected {} light/dark pairs", pairs.len()));
 
-    // Build theme.json as a DTCG token structure
+    // Build theme.json as a nested DTCG token structure.
+    // Tokens are inserted at their full dot-separated path, creating nested JSON objects.
     let mut theme_obj = serde_json::Map::new();
 
-    // Group tokens by their top-level group for DTCG structure
-    let mut groups: BTreeMap<String, serde_json::Map<String, serde_json::Value>> = BTreeMap::new();
-
-    // Add light/dark pairs with aggregates
+    // Add light/dark pairs: primitives + aggregate
     for (base, light_path, dark_path) in &pairs {
         let light_ref = format!("{{{light_path}}}");
         let dark_ref = format!("{{{dark_path}}}");
         let aggregate = format!("light-dark({light_ref}, {dark_ref})");
-
-        let (group, _) = first_group(light_path);
-        let group_map = groups.entry(group.clone()).or_default();
-
-        // Get the token type from the light token
         let token_type = flat.get(light_path).and_then(|t| t.token_type.clone());
 
-        // Add -on-light reference
-        let light_local = light_path
-            .strip_prefix(&format!("{group}."))
-            .unwrap_or(light_path);
-        group_map.insert(
-            light_local.to_string(),
+        insert_nested(
+            &mut theme_obj,
+            light_path,
             make_token_entry(&light_ref, token_type.as_deref()),
         );
-
-        // Add -on-dark reference
-        let dark_local = dark_path
-            .strip_prefix(&format!("{group}."))
-            .unwrap_or(dark_path);
-        group_map.insert(
-            dark_local.to_string(),
+        insert_nested(
+            &mut theme_obj,
+            dark_path,
             make_token_entry(&dark_ref, token_type.as_deref()),
         );
 
-        // Add aggregate
-        let base_local = base.strip_prefix(&format!("{group}.")).unwrap_or(base);
         let mut agg_entry = serde_json::Map::new();
         agg_entry.insert("$value".to_string(), serde_json::json!(aggregate));
         agg_entry.insert(
@@ -1011,12 +995,11 @@ fn cmd_theme_generate(
         if let Some(t) = &token_type {
             agg_entry.insert("$type".to_string(), serde_json::json!(t));
         }
-        group_map.insert(base_local.to_string(), serde_json::Value::Object(agg_entry));
+        insert_nested(&mut theme_obj, base, serde_json::Value::Object(agg_entry));
     }
 
     // Add non-paired tokens as references
     for (path_key, token) in &flat {
-        // Skip tokens that are part of a pair (light, dark, or base)
         if seen.contains(path_key) {
             continue;
         }
@@ -1029,32 +1012,11 @@ fn cmd_theme_generate(
         }
 
         let reference = format!("{{{path_key}}}");
-        let (group, _) = first_group(path_key);
-        let group_map = groups.entry(group.clone()).or_default();
-        let local = path_key
-            .strip_prefix(&format!("{group}."))
-            .unwrap_or(path_key);
-        group_map.insert(
-            local.to_string(),
+        insert_nested(
+            &mut theme_obj,
+            path_key,
             make_token_entry(&reference, token.token_type.as_deref()),
         );
-    }
-
-    // Build final JSON with group $type annotations
-    for (group_name, entries) in &groups {
-        let mut group_obj = serde_json::Map::new();
-
-        // Infer group $type from first token's type
-        if let Some(first_entry) = entries.values().next()
-            && let Some(t) = first_entry.get("$type")
-        {
-            group_obj.insert("$type".to_string(), t.clone());
-        }
-
-        for (key, val) in entries {
-            group_obj.insert(key.clone(), val.clone());
-        }
-        theme_obj.insert(group_name.clone(), serde_json::Value::Object(group_obj));
     }
 
     // Write to themes/{name}/theme.json
@@ -1072,11 +1034,45 @@ fn cmd_theme_generate(
     Ok(())
 }
 
-fn first_group(path: &str) -> (String, String) {
-    if let Some(pos) = path.find('.') {
-        (path[..pos].to_string(), path[pos + 1..].to_string())
-    } else {
-        (path.to_string(), String::new())
+/// Insert a value at a dot-separated path in a nested JSON object.
+/// Creates intermediate objects as needed. If a path is both a group
+/// and a token (has $value and children), merges the $value into the group.
+fn insert_nested(
+    root: &mut serde_json::Map<String, serde_json::Value>,
+    path: &str,
+    value: serde_json::Value,
+) {
+    let segments: Vec<&str> = path.split('.').collect();
+    let mut current = root;
+
+    for (i, segment) in segments.iter().enumerate() {
+        if i == segments.len() - 1 {
+            // Last segment: insert the value
+            if let Some(serde_json::Value::Object(existing_map)) = current.get_mut(*segment) {
+                // Merge new fields into existing group object
+                if let serde_json::Value::Object(new_map) = &value {
+                    for (k, v) in new_map {
+                        existing_map.insert(k.clone(), v.clone());
+                    }
+                }
+            } else {
+                current.insert(segment.to_string(), value);
+            }
+            return;
+        }
+
+        // Intermediate segment: ensure it's an object
+        if !current.contains_key(*segment) {
+            current.insert(
+                segment.to_string(),
+                serde_json::Value::Object(serde_json::Map::new()),
+            );
+        }
+        current = current
+            .get_mut(*segment)
+            .unwrap()
+            .as_object_mut()
+            .expect("intermediate path segment must be an object");
     }
 }
 
