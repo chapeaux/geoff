@@ -1,8 +1,14 @@
 # Stage 1: Build geoff
 FROM rust:1.84-slim AS builder
 WORKDIR /src
+
+# Install build dependencies for native crates (openssl, oxigraph/rocksdb, clang-sys)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev clang cmake make && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY . .
-RUN cargo build --release -p chapeaux-geoff && \
+RUN cargo build --locked --release -p chapeaux-geoff && \
     strip target/release/geoff
 
 # Stage 2: Runtime
