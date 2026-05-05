@@ -27,6 +27,7 @@ fn resolve_value(
 
     match value {
         TokenValue::String(s) if is_reference(s) => {
+            // Standalone reference: resolve to the target value entirely
             let ref_path = &s[1..s.len() - 1];
             if let Some(target) = all.get(ref_path) {
                 resolve_value(target, all, depth + 1)
@@ -34,45 +35,57 @@ fn resolve_value(
                 value.clone()
             }
         }
-        TokenValue::String(s) if is_light_dark_refs(s) => {
-            // Resolve references inside light-dark({ref}, {ref}) patterns
-            let inner = &s["light-dark(".len()..s.len() - 1];
-            if let Some((light_ref, dark_ref)) = inner.split_once(", ") {
-                let resolved_light = resolve_ref_str(light_ref, all, depth);
-                let resolved_dark = resolve_ref_str(dark_ref, all, depth);
-                TokenValue::String(format!("light-dark({resolved_light}, {resolved_dark})"))
-            } else {
-                value.clone()
-            }
+        TokenValue::String(s) if contains_reference(s) => {
+            // Inline references within a larger string (e.g. light-dark(), color-mix(), calc())
+            TokenValue::String(resolve_inline_refs(s, all, depth))
         }
         _ => value.clone(),
     }
 }
 
-fn resolve_ref_str(s: &str, all: &BTreeMap<String, TokenValue>, depth: usize) -> String {
-    if is_reference(s) {
-        let ref_path = &s[1..s.len() - 1];
-        if let Some(target) = all.get(ref_path) {
-            let resolved = resolve_value(target, all, depth + 1);
-            match resolved {
-                TokenValue::String(v) => return v,
-                TokenValue::Number(n) => return n.to_string(),
-                _ => {}
+/// Replace all `{reference}` occurrences within a string with their resolved values.
+fn resolve_inline_refs(s: &str, all: &BTreeMap<String, TokenValue>, depth: usize) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut pos = 0;
+    let bytes = s.as_bytes();
+
+    while pos < s.len() {
+        if bytes[pos] == b'{'
+            && let Some(end) = s[pos + 1..].find('}')
+            && !s[pos + 1..pos + 1 + end].contains('{')
+            && !s[pos + 1..pos + 1 + end].is_empty()
+        {
+            let ref_path = &s[pos + 1..pos + 1 + end];
+            if let Some(target) = all.get(ref_path) {
+                let resolved = resolve_value(target, all, depth + 1);
+                match resolved {
+                    TokenValue::String(v) => result.push_str(&v),
+                    TokenValue::Number(n) => {
+                        if n.fract() == 0.0 {
+                            result.push_str(&format!("{}", n as i64));
+                        } else {
+                            result.push_str(&n.to_string());
+                        }
+                    }
+                    _ => {
+                        result.push('{');
+                        result.push_str(ref_path);
+                        result.push('}');
+                    }
+                }
+                pos = pos + 1 + end + 1;
+                continue;
             }
         }
+        result.push(bytes[pos] as char);
+        pos += 1;
     }
-    s.to_string()
+    result
 }
 
-fn is_light_dark_refs(s: &str) -> bool {
-    if let Some(inner) = s
-        .strip_prefix("light-dark(")
-        .and_then(|s| s.strip_suffix(')'))
-        && let Some((light, dark)) = inner.split_once(", ")
-    {
-        return is_reference(light) || is_reference(dark);
-    }
-    false
+/// Check if a string contains any `{reference}` pattern (but is not itself a standalone reference).
+fn contains_reference(s: &str) -> bool {
+    !is_reference(s) && s.contains('{') && s.contains('}')
 }
 
 /// Resolve `{reference}` strings in token values, checking a base token set first.
@@ -105,7 +118,7 @@ pub struct UnresolvedRef {
 }
 
 /// Scan resolved tokens for any remaining `{reference}` strings that weren't resolved.
-/// Returns a list of unresolved references for error reporting.
+/// Checks both standalone references and inline references within larger strings.
 pub fn find_unresolved(tokens: &BTreeMap<String, FlatToken>) -> Vec<UnresolvedRef> {
     let mut errors = Vec::new();
     for (path, token) in tokens {
@@ -115,17 +128,25 @@ pub fn find_unresolved(tokens: &BTreeMap<String, FlatToken>) -> Vec<UnresolvedRe
                     token_path: path.clone(),
                     reference: s.clone(),
                 });
-            }
-            // Also check inside light-dark() patterns
-            if s.starts_with("light-dark(") {
-                for part in s.split(", ") {
-                    let part = part.trim_start_matches("light-dark(").trim_end_matches(')');
-                    if is_reference(part) {
-                        errors.push(UnresolvedRef {
-                            token_path: path.clone(),
-                            reference: part.to_string(),
-                        });
+            } else {
+                // Scan for inline {reference} patterns that survived resolution
+                let mut pos = 0;
+                let bytes = s.as_bytes();
+                while pos < s.len() {
+                    if bytes[pos] == b'{'
+                        && let Some(end) = s[pos + 1..].find('}')
+                    {
+                        let ref_path = &s[pos + 1..pos + 1 + end];
+                        if !ref_path.contains('{') && !ref_path.is_empty() {
+                            errors.push(UnresolvedRef {
+                                token_path: path.clone(),
+                                reference: format!("{{{ref_path}}}"),
+                            });
+                            pos = pos + 1 + end + 1;
+                            continue;
+                        }
                     }
+                    pos += 1;
                 }
             }
         }
