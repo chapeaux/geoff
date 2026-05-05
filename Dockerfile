@@ -8,6 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
+
+# Override release profile to avoid OOM on CI runners (7GB RAM).
+# The workspace Cargo.toml uses lto=true + codegen-units=1 which
+# requires ~10GB+ for a single LLVM link pass.
+ENV CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
+
 RUN cargo build --locked --release -p chapeaux-geoff && \
     strip target/release/geoff
 
