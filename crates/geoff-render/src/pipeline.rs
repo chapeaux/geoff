@@ -707,7 +707,13 @@ fn insert_custom_triples(
     registry: &MappingRegistry,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (key, value) in rdf_fields {
-        let predicate = registry.expand_iri(key).unwrap_or_else(|| key.clone());
+        let predicate = if let Some(iri) = registry.resolve_property(key) {
+            iri.to_string()
+        } else if let Some(expanded) = registry.expand_iri(key) {
+            expanded
+        } else {
+            key.clone()
+        };
         let obj = json_to_object_value(value);
         store.insert_triple_into(page_uri.as_str(), &predicate, &obj, graph_name)?;
     }
