@@ -159,7 +159,20 @@ Two template functions provide page listing and navigation without SPARQL:
 {% endfor %}
 ```
 
-Parameters: `section` (URL prefix filter), `sort` (field name), `reverse` (boolean), plus any frontmatter field as a filter (e.g. `navSection="about"`).
+Parameters: `section` (URL prefix filter), `sort` (field name), `reverse` (boolean), `depth` (max URL depth relative to section), plus any frontmatter field as a filter (e.g. `navSection="about"`).
+
+#### Depth filtering
+
+Use `depth` to get only direct children of a section — no grandchildren:
+
+```html
+{% set nav = pages(section="foundations", sort="order", depth=1) %}
+```
+
+Depth counts path segments relative to the section prefix:
+- `/foundations/` → depth 0 (section index)
+- `/foundations/color/` → depth 1 (direct child)
+- `/foundations/color/usage/` → depth 2 (grandchild)
 
 ### `tree()` — Build navigation trees
 

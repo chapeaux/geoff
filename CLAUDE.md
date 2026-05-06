@@ -14,7 +14,8 @@ See `INITIAL_PLAN.md` for the full architecture plan, workspace structure, phase
 
 - **Schema.org namespace**: All IRIs use `https://schema.org/` (with TLS). `KNOWN_PREFIXES` in `mappings.rs` is the canonical prefix list.
 - **MappingRegistry**: Owns both built-in and user-declared prefixes (`extra_prefixes` field). `expand_iri()` and `compact_iri()` are instance methods that check both. User prefixes come from `config.linked_data.prefixes`.
-- **Pipeline phases**: `ingest_content()` → plugin hooks → `render_pages()`. The page index (for `pages()`/`tree()`) is built during ingestion for ALL pages (including incremental-skipped ones).
+- **Pipeline phases**: `ingest_content()` → plugin hooks → `render_pages()`. The page index (for `pages()`/`tree()`) is built during ingestion for ALL pages (including incremental-skipped ones). Auto-generated `urn:geoff:meta:depth` and `urn:geoff:meta:parent` triples per page.
+- **`pages()` depth**: `pages(section="foundations", depth=1)` returns only direct children. Depth counts path segments relative to the section prefix.
 - **Template variables**: `page_url`, `page_uri`, `rdfa_attrs`, `critical_css`, `frontmatter` are built-in on every page. `frontmatter` contains ALL TOML fields as JSON.
 - **Frontmatter → triples**: Top-level frontmatter fields with a mapping in `ontology/mappings.toml` (or seeded defaults) are automatically stored as RDF triples via `insert_mapped_frontmatter_triples()`. No `[rdf.custom]` or `[data]` needed for mapped fields.
 - **Frontmatter sections**: `[rdf.custom]` for explicit IRIs (also checks mapping registry), `[data]` for friendly-name linked data resolved via the mapping registry.
