@@ -383,6 +383,9 @@ fn parse_and_ingest(
     // Insert [data] fields as triples (friendly names resolved via registry)
     insert_data_triples(store, &page_uri, graph_name, &data_fields, registry)?;
 
+    // Insert any remaining top-level frontmatter fields that have a mapping
+    insert_mapped_frontmatter_triples(store, &page_uri, graph_name, &frontmatter, registry)?;
+
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
     }
@@ -478,6 +481,9 @@ fn ingest_triples_only(
 
     // Insert [data] fields as triples (friendly names resolved via registry)
     insert_data_triples(store, &page_uri, graph_name, &data_fields, registry)?;
+
+    // Insert any remaining top-level frontmatter fields that have a mapping
+    insert_mapped_frontmatter_triples(store, &page_uri, graph_name, &frontmatter, registry)?;
 
     if let Some(sidecar_path) = sidecar_ttl_path(file_path) {
         store.load_turtle_into(&sidecar_path, graph_name)?;
@@ -739,6 +745,46 @@ fn insert_data_triples(
         };
         let obj = json_to_object_value(value);
         store.insert_triple_into(page_uri.as_str(), &predicate, &obj, graph_name)?;
+    }
+    Ok(())
+}
+
+/// Insert triples for top-level frontmatter fields that have a property mapping.
+/// Skips fields already handled by insert_page_triples (title, date, author,
+/// description, type, template) and internal sections (rdf, data).
+fn insert_mapped_frontmatter_triples(
+    store: &ContentStore,
+    page_uri: &PageUri,
+    graph_name: &str,
+    frontmatter: &toml::Value,
+    registry: &MappingRegistry,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let skip = [
+        "title",
+        "date",
+        "author",
+        "description",
+        "type",
+        "template",
+        "tags",
+        "rdf",
+        "data",
+    ];
+
+    let table = match frontmatter.as_table() {
+        Some(t) => t,
+        None => return Ok(()),
+    };
+
+    for (key, value) in table {
+        if skip.contains(&key.as_str()) {
+            continue;
+        }
+        if let Some(iri) = registry.resolve_property(key) {
+            let json_val = geoff_content::frontmatter::toml_to_json(value);
+            let obj = json_to_object_value(&json_val);
+            store.insert_triple_into(page_uri.as_str(), iri, &obj, graph_name)?;
+        }
     }
     Ok(())
 }
