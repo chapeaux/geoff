@@ -576,6 +576,7 @@ fn resolve_property_name(name: &str, registry: &MappingRegistry) -> String {
 /// - `section`: Filter by URL prefix (e.g. `section="about"` matches `/about/...`)
 /// - `sort`: Sort results by this field name
 /// - `reverse`: Reverse the sort order (default: false)
+/// - `depth`: Max URL depth relative to section (e.g. `depth=1` = direct children only)
 /// - Any other parameter filters pages where that field equals the given value
 struct PagesFunction {
     index: Arc<RwLock<Vec<serde_json::Value>>>,
@@ -590,7 +591,7 @@ impl tera::Function for PagesFunction {
 
         let mut results: Vec<serde_json::Value> = index.clone();
 
-        if let Some(section) = args.get("section").and_then(|v| v.as_str()) {
+        let section_prefix = if let Some(section) = args.get("section").and_then(|v| v.as_str()) {
             let prefix = if section.starts_with('/') {
                 section.to_string()
             } else {
@@ -602,14 +603,27 @@ impl tera::Function for PagesFunction {
                     .map(|u| u.starts_with(&prefix))
                     .unwrap_or(false)
             });
-        }
+            Some(prefix)
+        } else {
+            None
+        };
 
-        let control_keys = ["section", "sort", "reverse"];
+        let control_keys = ["section", "sort", "reverse", "depth"];
         for (key, val) in args {
             if control_keys.contains(&key.as_str()) {
                 continue;
             }
             results.retain(|p| p.get(key).map(|v| v == val).unwrap_or(false));
+        }
+
+        if let Some(max_depth) = args.get("depth").and_then(|v| v.as_u64()) {
+            let prefix = section_prefix.as_deref().unwrap_or("/");
+            results.retain(|p| {
+                let url = p.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                let relative = url.strip_prefix(prefix).unwrap_or(url);
+                let segments = relative.split('/').filter(|s| !s.is_empty()).count();
+                (segments as u64) <= max_depth
+            });
         }
 
         if let Some(sort_key) = args.get("sort").and_then(|v| v.as_str()) {

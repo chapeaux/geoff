@@ -698,6 +698,39 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
             &ObjectValue::Literal(url.to_string()),
             graph_name,
         )?;
+
+        // Auto-generate depth and parent triples from the URL path
+        let depth = url.split('/').filter(|s| !s.is_empty()).count();
+        store.insert_triple_into(
+            page_uri.as_str(),
+            "urn:geoff:meta:depth",
+            &ObjectValue::TypedLiteral {
+                value: depth.to_string(),
+                datatype: xsd::INTEGER.to_string(),
+            },
+            graph_name,
+        )?;
+
+        if depth > 0 {
+            let parent = if url.ends_with('/') {
+                let trimmed = url.trim_end_matches('/');
+                match trimmed.rfind('/') {
+                    Some(pos) => format!("{}/", &trimmed[..=pos]),
+                    None => "/".to_string(),
+                }
+            } else {
+                match url.rfind('/') {
+                    Some(0) | None => "/".to_string(),
+                    Some(pos) => format!("{}/", &url[..pos]),
+                }
+            };
+            store.insert_triple_into(
+                page_uri.as_str(),
+                "urn:geoff:meta:parent",
+                &ObjectValue::Literal(parent),
+                graph_name,
+            )?;
+        }
     }
     Ok(())
 }
@@ -1603,6 +1636,76 @@ description = "A test project"
         assert!(
             mission_pos < team_pos,
             "Mission (order=1) should come before Team (order=2)"
+        );
+    }
+
+    #[test]
+    fn pages_depth_filters_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let site_root = camino::Utf8Path::from_path(dir.path()).unwrap();
+
+        std::fs::write(
+            site_root.join("geoff.toml"),
+            "base_url = \"https://example.com\"\ntitle = \"Test\"\n\n[build]\nurl_style = \"directory\"\n",
+        )
+        .unwrap();
+
+        let content_dir = site_root.join("content");
+        let foundations_dir = content_dir.join("foundations");
+        let color_dir = foundations_dir.join("color");
+        std::fs::create_dir_all(&color_dir).unwrap();
+
+        std::fs::write(
+            content_dir.join("index.md"),
+            "+++\ntitle = \"Home\"\ntemplate = \"listing.html\"\n+++\n",
+        )
+        .unwrap();
+        std::fs::write(
+            foundations_dir.join("index.md"),
+            "+++\ntitle = \"Foundations\"\n+++\n",
+        )
+        .unwrap();
+        std::fs::write(
+            foundations_dir.join("color.md"),
+            "+++\ntitle = \"Color\"\n+++\n",
+        )
+        .unwrap();
+        std::fs::write(
+            color_dir.join("usage.md"),
+            "+++\ntitle = \"Color Usage\"\n+++\n",
+        )
+        .unwrap();
+
+        let tmpl_dir = site_root.join("templates");
+        std::fs::create_dir_all(&tmpl_dir).unwrap();
+        std::fs::write(tmpl_dir.join("page.html"), "{{ title }}").unwrap();
+        std::fs::write(
+            tmpl_dir.join("listing.html"),
+            r#"ALL:{% set all = pages(section="foundations") %}{{ all | length }} DEPTH1:{% set d1 = pages(section="foundations", depth=1) %}{{ d1 | length }}"#,
+        )
+        .unwrap();
+
+        let config = SiteConfig::from_file(&site_root.join("geoff.toml")).unwrap();
+        let store = Arc::new(ContentStore::new().unwrap());
+        let mut renderer =
+            crate::renderer::SiteRenderer::new(&site_root.join(&config.template_dir)).unwrap();
+        renderer.register_sparql_function(store.clone());
+
+        let pages = build_site(site_root, &config, &store, &renderer).unwrap();
+        let listing = pages
+            .iter()
+            .find(|p| p.output_path == "index.html")
+            .unwrap();
+
+        assert!(
+            listing.html.contains("ALL:3"),
+            "pages(section=foundations) should return 3 pages (index + color + color/usage), got: {}",
+            listing.html
+        );
+        assert!(
+            listing.html.contains("DEPTH1:2"),
+            "pages(section=foundations, depth=1) should return 2 (index + color, not color/usage), got: {}",
+            listing.html
         );
     }
 
