@@ -66,7 +66,7 @@ tags = ["tutorial", "getting-started"]
 Your content here...
 ```
 
-No IRIs, no prefixes, no RDF syntax. Geoff resolves `type = "Blog Post"` to `schema:BlogPosting` and `author` to `schema:author` via the mapping registry.
+No IRIs, no prefixes, no RDF syntax. Geoff resolves `type = "Blog Post"` to `schema:BlogPosting` and `author` to `schema:author` via the mapping registry. Any frontmatter field with a mapping in `ontology/mappings.toml` is automatically stored as an RDF triple — queryable via SPARQL and included in JSON-LD.
 
 ### Build
 
@@ -199,18 +199,27 @@ Every page template has access to:
 Geoff resolves plain frontmatter fields to ontology terms. Mappings are stored in `ontology/mappings.toml`:
 
 ```toml
-[mappings]
-title = "schema:name"
-date = "schema:datePublished"
-author = "schema:author"
-type = "rdf:type"
-tags = "schema:keywords"
-description = "schema:description"
+[types]
+"Blog Post" = "https://schema.org/BlogPosting"
+
+[properties]
+# Standard fields are mapped by default — override here if needed
+title = "https://schema.org/name"
+date = "https://schema.org/datePublished"
+author = "https://schema.org/author"
+tags = "https://schema.org/keywords"
+
+# Custom fields — add mappings so they become RDF triples
+order = "https://schema.org/position"
+navSection = "urn:mysite:navSection"
+status = "https://schema.org/creativeWorkStatus"
 ```
 
-When Geoff encounters an unmapped field, it fuzzy-matches against loaded vocabularies and prompts you to choose. The resolution is saved so you're never asked twice.
+Any frontmatter field with a mapping becomes an RDF triple in the page's graph — queryable via SPARQL and included in JSON-LD output. Fields without mappings are still available via `{{ frontmatter.fieldName }}` and `pages()`, but won't appear in SPARQL or JSON-LD.
 
-Power users can use the `[rdf]` table for direct IRI access:
+When Geoff encounters an unmapped field during `geoff new`, it fuzzy-matches against loaded vocabularies and prompts you to choose. The resolution is saved so you're never asked twice.
+
+Power users can use the `[rdf]` table for direct IRI access (keys are also checked against the mapping registry):
 
 ```toml
 [rdf.custom]
