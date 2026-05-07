@@ -58,15 +58,17 @@ geoff-faceted-search {
   min-width: 1.5em;
   text-align: right;
 }
-.gfs-facet-general {
-  opacity: 0.7;
+.gfs-facet-hint {
+  font-size: 0.75em;
+  opacity: 0.5;
+  font-style: italic;
 }
 .gfs-facet-all {
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--gfs-divider, #eee);
   font-size: 0.85em;
-  opacity: 0.8;
+  font-weight: 600;
 }
 .gfs-input {
   width: 100%;
@@ -209,24 +211,15 @@ class GeoffFacetedSearch extends HTMLElement {
     // Restore facets from URL
     const facetParam = params.get('facets');
     if (facetParam) {
-      const names = facetParam === 'all' ? null : facetParam.split(',');
-      if (!names) {
-        await this._selectAll();
-      } else {
-        for (const name of names) {
-          if (name === 'general') continue; // handled separately
-          await this._loadFacet(name);
-        }
+      const names = facetParam === 'all' ? this._facets.map(f => f.name) : facetParam.split(',');
+      for (const name of names) {
+        if (name !== 'general') await this._loadFacet(name);
       }
-      // Restore general state
-      if (params.get('general') === 'false') {
-        this._generalActive = false;
-        const gcb = this.querySelector('[data-facet="general"]');
-        if (gcb) gcb.checked = false;
-      }
-      this._syncCheckboxes();
     }
-
+    if (params.get('general') === 'false') {
+      this._generalActive = false;
+    }
+    this._syncCheckboxes();
     this._doSearch();
   }
 
@@ -305,21 +298,35 @@ class GeoffFacetedSearch extends HTMLElement {
     }
 
     container.classList.remove('gfs-loading');
+    this._rebuildFacetUI();
+
+    container.querySelectorAll('input[data-facet]').forEach(cb => {
+      cb.addEventListener('change', () => this._onFacetChange(cb));
+    });
+  }
+
+  _rebuildFacetUI() {
+    const container = this.querySelector('.gfs-facets');
+    const allChecked = this._generalActive &&
+      this._activeFacets.size === this._facets.length;
+
     container.innerHTML = `
-      <label class="gfs-facet gfs-facet-general">
-        <input type="checkbox" data-facet="general" checked />
+      <label class="gfs-facet gfs-facet-all">
+        <input type="checkbox" data-facet="all" ${allChecked ? 'checked' : ''} />
+        <span class="gfs-facet-label">${allChecked ? 'Deselect all' : 'Select all'}</span>
+      </label>
+      <label class="gfs-facet">
+        <input type="checkbox" data-facet="general" ${this._generalActive ? 'checked' : ''} />
         <span class="gfs-facet-label">General</span>
         <span class="gfs-facet-count" data-count="general"></span>
       </label>
-      <label class="gfs-facet gfs-facet-all">
-        <input type="checkbox" data-facet="all" />
-        <span class="gfs-facet-label">Select all</span>
-      </label>
       ${this._facets.map(f => `
         <label class="gfs-facet">
-          <input type="checkbox" data-facet="${this._esc(f.name)}" />
+          <input type="checkbox" data-facet="${this._esc(f.name)}" ${this._activeFacets.has(f.name) ? 'checked' : ''} />
           <span class="gfs-facet-label">${this._titleCase(f.name)}</span>
-          <span class="gfs-facet-count" data-count="${this._esc(f.name)}"></span>
+          ${f.loaded
+            ? `<span class="gfs-facet-count" data-count="${this._esc(f.name)}"></span>`
+            : `<span class="gfs-facet-hint">(check to load)</span>`}
         </label>
       `).join('')}
     `;
@@ -332,29 +339,27 @@ class GeoffFacetedSearch extends HTMLElement {
   async _onFacetChange(cb) {
     const facet = cb.dataset.facet;
 
-    if (facet === 'general') {
-      this._generalActive = cb.checked;
-      this._updateUrl();
-      this._doSearch();
-      return;
-    }
-
     if (facet === 'all') {
       if (cb.checked) {
-        await this._selectAll();
+        this._generalActive = true;
+        for (const f of this._facets) {
+          await this._loadFacet(f.name);
+        }
       } else {
-        this._deselectAll();
+        this._generalActive = false;
+        this._activeFacets.clear();
       }
+    } else if (facet === 'general') {
+      this._generalActive = cb.checked;
     } else {
       if (cb.checked) {
         await this._loadFacet(facet);
       } else {
         this._activeFacets.delete(facet);
       }
-      this._syncAllCheckbox();
     }
 
-    this._syncCheckboxes();
+    this._rebuildFacetUI();
     this._updateUrl();
     this._doSearch();
   }
@@ -368,27 +373,8 @@ class GeoffFacetedSearch extends HTMLElement {
     this._activeFacets.add(name);
   }
 
-  async _selectAll() {
-    for (const f of this._facets) {
-      await this._loadFacet(f.name);
-    }
-  }
-
-  _deselectAll() {
-    this._activeFacets.clear();
-  }
-
   _syncCheckboxes() {
-    for (const f of this._facets) {
-      const cb = this.querySelector(`[data-facet="${f.name}"]`);
-      if (cb) cb.checked = this._activeFacets.has(f.name);
-    }
-    this._syncAllCheckbox();
-  }
-
-  _syncAllCheckbox() {
-    const allCb = this.querySelector('[data-facet="all"]');
-    if (allCb) allCb.checked = this._activeFacets.size === this._facets.length;
+    this._rebuildFacetUI();
   }
 
   _doSearch() {
@@ -403,7 +389,7 @@ class GeoffFacetedSearch extends HTMLElement {
     const hasQuery = query.length > 0;
     const hasFacets = this._activeFacets.size > 0;
 
-    if (!hasQuery && !hasFacets) {
+    if (!hasQuery && !hasFacets && !this._generalActive) {
       container.innerHTML = '';
       this._setStatus('');
       return;
@@ -418,20 +404,20 @@ class GeoffFacetedSearch extends HTMLElement {
       if (tokens.length > 0) filters.push(this._buildFilter(tokens));
     }
 
-    // Build section filter based on active facets + general toggle
-    const needsSectionFilter = hasFacets || !this._generalActive;
-    if (needsSectionFilter) {
-      const parts = [...this._activeFacets].map(f => `CONTAINS(STR(?s), "/${f}/")`);
-      if (this._generalActive) {
-        const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
-        parts.push(`(${generalFilter})`);
-      }
-      if (parts.length > 0) {
-        filters.push(`(${parts.join(' || ')})`);
-      } else {
-        // General unchecked, no sections checked — nothing matches
-        filters.push('false');
-      }
+    // Build section filter
+    const sectionParts = [];
+    if (this._generalActive) {
+      const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
+      sectionParts.push(`(${generalFilter})`);
+    }
+    for (const f of this._activeFacets) {
+      sectionParts.push(`CONTAINS(STR(?s), "/${f}/")`);
+    }
+
+    if (sectionParts.length > 0) {
+      filters.push(`(${sectionParts.join(' || ')})`);
+    } else {
+      filters.push('false');
     }
 
     const filterClause = filters.length > 0 ? `FILTER(${filters.join(' && ')})` : '';
@@ -463,7 +449,6 @@ class GeoffFacetedSearch extends HTMLElement {
     if (!this._store) return;
     const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
 
-    // General count
     const generalEl = this.querySelector('[data-count="general"]');
     if (generalEl) {
       const gf = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
@@ -471,14 +456,9 @@ class GeoffFacetedSearch extends HTMLElement {
       generalEl.textContent = c > 0 ? `(${c})` : '';
     }
 
-    // Section counts
     for (const f of this._facets) {
       const el = this.querySelector(`[data-count="${f.name}"]`);
       if (!el) continue;
-      if (!f.loaded) {
-        el.textContent = '';
-        continue;
-      }
       const c = this._countQuery(`CONTAINS(STR(?s), "/${f.name}/")`, textFilter);
       el.textContent = c > 0 ? `(${c})` : '';
     }
