@@ -345,8 +345,8 @@ class GeoffFacetedSearch extends HTMLElement {
 
     if (facet === 'all') {
       if (cb.checked) {
-        // Select all: check all facets and load their graphs
-        this.querySelectorAll('input[data-facet]').forEach(c => { c.checked = true; });
+        // Select all section facets (not global)
+        this.querySelectorAll('input[data-facet]:not([data-facet="global"]):not([data-facet="all"])').forEach(c => { c.checked = true; });
         for (const f of this._facets) {
           this._activeFacets.add(f.name);
           if (!f.loaded) {
@@ -355,9 +355,9 @@ class GeoffFacetedSearch extends HTMLElement {
           }
         }
       } else {
-        // Deselect all
+        // Deselect all section facets (not global)
         this._activeFacets.clear();
-        this.querySelectorAll('input[data-facet]').forEach(c => { c.checked = false; });
+        this.querySelectorAll('input[data-facet]:not([data-facet="global"]):not([data-facet="all"])').forEach(c => { c.checked = false; });
       }
     } else {
       if (cb.checked) {
