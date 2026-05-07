@@ -51,6 +51,18 @@ geoff-faceted-search {
 .gfs-facet input[type="checkbox"] {
   accent-color: var(--gfs-facet-active-border, #4285f4);
 }
+.gfs-facet-label {
+  flex: 1;
+}
+.gfs-facet-count {
+  font-size: 0.8em;
+  opacity: 0.6;
+  min-width: 1.5em;
+  text-align: right;
+}
+.gfs-facet-count:empty {
+  display: none;
+}
 .gfs-facet-all {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
@@ -282,12 +294,13 @@ class GeoffFacetedSearch extends HTMLElement {
       ${this._facets.map(f => `
         <label class="gfs-facet">
           <input type="checkbox" data-facet="${this._esc(f.name)}" />
-          ${this._titleCase(f.name)}
+          <span class="gfs-facet-label">${this._titleCase(f.name)}</span>
+          <span class="gfs-facet-count" data-count-facet="${this._esc(f.name)}"></span>
         </label>
       `).join('')}
       <label class="gfs-facet gfs-facet-all">
         <input type="checkbox" data-facet="all" />
-        Select all
+        <span class="gfs-facet-label">Select all</span>
       </label>
     `;
 
@@ -430,6 +443,7 @@ class GeoffFacetedSearch extends HTMLElement {
         arr = [...this._store.query(sparql)];
       }
       this._renderResults(arr, query);
+      this._updateFacetCounts(hasQuery ? query : null);
 
       // Update URL params
       const url = new URL(location.href);
@@ -442,6 +456,49 @@ class GeoffFacetedSearch extends HTMLElement {
     } catch (e) {
       console.error('[geoff-faceted-search] query error:', e);
       this._setStatus('Search error');
+    }
+  }
+
+  _updateFacetCounts(query) {
+    if (!this._store) return;
+
+    for (const f of this._facets) {
+      const el = this.querySelector(`[data-count-facet="${f.name}"]`);
+      if (!el) continue;
+
+      if (!f.loaded) {
+        el.textContent = '';
+        continue;
+      }
+
+      // Count matching results in this facet's section
+      const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
+      const sectionFilter = `STRSTARTS(STR(?url), "/${f.name}/") || STRSTARTS(STR(?url), "/${f.name}.")`;
+      const filters = [sectionFilter];
+      if (textFilter) filters.push(textFilter);
+
+      const sparql = `
+        SELECT (COUNT(DISTINCT ?s) AS ?count) WHERE {
+          ?s <https://schema.org/name> ?title .
+          OPTIONAL { ?s <https://schema.org/url> ?url }
+          OPTIONAL { ?s <https://schema.org/description> ?desc }
+          FILTER(${filters.join(' && ')})
+        }
+      `;
+
+      try {
+        let count = 0;
+        if (this._store._geoff) {
+          const result = JSON.parse(this._store.query(sparql));
+          count = parseInt(result[0]?.count || '0', 10);
+        } else {
+          const result = [...this._store.query(sparql)];
+          count = parseInt(this._v(result[0], 'count') || '0', 10);
+        }
+        el.textContent = count > 0 ? `(${count})` : '';
+      } catch {
+        el.textContent = '';
+      }
     }
   }
 
