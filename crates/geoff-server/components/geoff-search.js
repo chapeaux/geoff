@@ -251,14 +251,20 @@ class GeoffSearch extends HTMLElement {
     this._setStatus('Loading search…');
 
     try {
-      // Try local GeoffSparql engine first, fall back to CDN Oxigraph
       let store;
-      try {
-        const mod = await import('/bin/geoff_sparql_wasm.js');
-        await mod.default();
-        store = new mod.GeoffSparql();
-        store._geoff = true;
-      } catch {
+      const wasmSrc = this.getAttribute('wasm-src');
+      if (wasmSrc) {
+        try {
+          const mod = await import(wasmSrc);
+          await mod.default();
+          store = new mod.GeoffSparql();
+          store._geoff = true;
+        } catch {
+          const ox = await import('https://esm.sh/oxigraph@0.5');
+          await ox.default();
+          store = new ox.Store();
+        }
+      } else {
         const ox = await import('https://esm.sh/oxigraph@0.5');
         await ox.default();
         store = new ox.Store();
