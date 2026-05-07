@@ -514,7 +514,7 @@ class GeoffFacetedSearch extends HTMLElement {
       const allSections = this._facets.map(f => f.name);
       const globalFilter = allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
       const count = this._runCount(globalFilter, textFilter);
-      globalEl.textContent = count > 0 ? `(${count})` : '';
+      globalEl.textContent = `(${count})`;
     }
 
     // Count per-section facets
@@ -523,12 +523,12 @@ class GeoffFacetedSearch extends HTMLElement {
       if (!el) continue;
 
       if (!f.loaded) {
-        el.textContent = '';
+        el.textContent = '(–)';
         continue;
       }
 
       const count = this._runCount(`CONTAINS(STR(?s), "/${f.name}/")`, textFilter);
-      el.textContent = count > 0 ? `(${count})` : '';
+      el.textContent = `(${count})`;
     }
   }
 
