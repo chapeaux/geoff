@@ -309,11 +309,12 @@ class GeoffFacetedSearch extends HTMLElement {
         this._activeFacets.add(facet);
         btn.setAttribute('aria-pressed', 'true');
 
-        // Load the facet graph on demand
+        // Load the facet graph on demand — resolve URL relative to current origin
         const facetData = this._facets.find(f => f.name === facet);
         if (facetData && !facetData.loaded) {
           btn.classList.add('gfs-loading');
-          await this._loadGraph(facetData.url);
+          const facetUrl = `/search/${facet}.nt`;
+          await this._loadGraph(facetUrl);
           facetData.loaded = true;
           btn.classList.remove('gfs-loading');
         }
