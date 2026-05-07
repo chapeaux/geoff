@@ -656,6 +656,11 @@ async fn cmd_build(
         v.detail("Generated /search/ page");
     }
 
+    // Generate MCP manifest for agent discovery
+    if config.mcp.enabled {
+        generate_mcp_manifest(&config, &output_dir, v)?;
+    }
+
     // Dispatch on_build_complete
     let output_dir_utf8 = camino::Utf8Path::new(output_dir.as_str());
     registry
@@ -1104,6 +1109,122 @@ fn make_token_entry(value: &str, token_type: Option<&str>) -> serde_json::Value 
         entry.insert("$type".to_string(), serde_json::json!(t));
     }
     serde_json::Value::Object(entry)
+}
+
+fn generate_mcp_manifest(
+    config: &geoff_core::config::SiteConfig,
+    output_dir: &Utf8Path,
+    v: Verbosity,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let base = config.base_url.trim_end_matches('/');
+
+    let wasm_url = if let Some(ref custom) = config.mcp.wasm_url {
+        custom.clone()
+    } else {
+        format!("{base}/bin/geoff-sparql.wasm")
+    };
+
+    let description =
+        config.mcp.description.as_deref().unwrap_or(
+            "Execute a SPARQL SELECT or ASK query against the site's RDF knowledge graph",
+        );
+
+    let dataset_url = format!("{base}/{}", config.search.output);
+
+    // Build datasets array from search partitions
+    let mut datasets = serde_json::json!([]);
+    if let Some(ref _strategy) = config.search.partition {
+        // Read the search directory for partition files
+        let search_dir = output_dir.join("search");
+        if search_dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&search_dir)
+        {
+            let mut ds = Vec::new();
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".nt") {
+                    let stem = name.strip_suffix(".nt").unwrap_or(&name);
+                    ds.push(serde_json::json!({
+                        "name": stem,
+                        "url": format!("{base}/search/{name}")
+                    }));
+                }
+            }
+            ds.sort_by(|a, b| {
+                a["name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(b["name"].as_str().unwrap_or(""))
+            });
+            datasets = serde_json::json!(ds);
+        }
+    }
+
+    let site_name = config
+        .base_url
+        .replace("https://", "")
+        .replace("http://", "")
+        .replace('/', "-")
+        .trim_end_matches('-')
+        .to_string();
+
+    let manifest = serde_json::json!({
+        "mcp_version": "1.0",
+        "name": format!("{site_name}-knowledge"),
+        "description": format!("Structured knowledge base for {}", config.title),
+        "tools": [{
+            "name": "sparql_query",
+            "description": description,
+            "runtime": "wasm-wasi",
+            "binary_url": wasm_url,
+            "wit_url": format!("{base}/bin/geoff-sparql.wit"),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "SPARQL SELECT or ASK query"
+                    },
+                    "dataset_url": {
+                        "type": "string",
+                        "description": "URL of the N-Triples dataset to query (optional)"
+                    }
+                },
+                "required": ["query"]
+            },
+            "fixed_arguments": {
+                "dataset_url": dataset_url
+            },
+            "datasets": datasets
+        }]
+    });
+
+    let manifest_str = serde_json::to_string_pretty(&manifest)?;
+
+    // Write .well-known/mcp.json
+    let wellknown_dir = output_dir.join(".well-known");
+    std::fs::create_dir_all(&wellknown_dir)?;
+    std::fs::write(wellknown_dir.join("mcp.json"), &manifest_str)?;
+
+    // Write aliases
+    std::fs::write(wellknown_dir.join("mcp"), &manifest_str)?;
+    std::fs::write(output_dir.join(".mcp.json"), &manifest_str)?;
+
+    // Copy WIT file
+    let bin_dir = output_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir)?;
+    let wit_content = include_str!("../components/geoff-sparql.wit");
+    std::fs::write(bin_dir.join("geoff-sparql.wit"), wit_content)?;
+
+    // Copy WASM if local mode or user override exists
+    let user_wasm = output_dir.join("../static/bin/geoff-sparql.wasm");
+    if user_wasm.exists() {
+        std::fs::copy(&user_wasm, bin_dir.join("geoff-sparql.wasm"))?;
+        v.detail("Copied user-provided geoff-sparql.wasm");
+    }
+
+    v.detail("Generated .well-known/mcp.json manifest");
+    Ok(())
 }
 
 fn generate_search_page(config: &geoff_core::config::SiteConfig) -> String {

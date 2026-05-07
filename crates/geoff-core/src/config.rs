@@ -181,6 +181,39 @@ impl Default for LinkedDataConfig {
     }
 }
 
+/// MCP agent discovery configuration.
+/// Generates a `.well-known/mcp.json` manifest and optionally bundles
+/// a WASM SPARQL engine so AI agents can query the site's RDF graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// WASM delivery: "cdn" (default) or "local" (bundled in dist/bin/).
+    #[serde(default = "default_wasm_source")]
+    pub wasm_source: String,
+    /// Custom WASM URL (overrides cdn/local).
+    #[serde(default)]
+    pub wasm_url: Option<String>,
+    /// Custom description for the manifest tool entry.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wasm_source: default_wasm_source(),
+            wasm_url: None,
+            description: None,
+        }
+    }
+}
+
+fn default_wasm_source() -> String {
+    "cdn".to_string()
+}
+
 /// Design system token configuration.
 /// Points to external token files (e.g. from node_modules) that provide
 /// the raw primitives a theme is built from.
@@ -224,6 +257,8 @@ pub struct SiteConfig {
     pub linked_data: LinkedDataConfig,
     #[serde(default)]
     pub design: DesignSystemConfig,
+    #[serde(default)]
+    pub mcp: McpConfig,
 }
 
 /// URL style for generated pages.

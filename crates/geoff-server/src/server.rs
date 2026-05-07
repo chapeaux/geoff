@@ -398,6 +398,24 @@ async fn page_handler(
     match html {
         Some(content) => {
             // Serve non-HTML content (e.g. search.nt) with appropriate content type
+            if path.ends_with(".json")
+                || path.ends_with(".wit")
+                || path == "/.well-known/mcp"
+                || path == "/.mcp.json"
+            {
+                let ct = if path.ends_with(".wit") {
+                    "text/plain"
+                } else {
+                    "application/json"
+                };
+                return (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, ct)],
+                    content.clone(),
+                )
+                    .into_response();
+            }
+
             if path.ends_with(".nt") {
                 return (
                     StatusCode::OK,
@@ -437,6 +455,8 @@ async fn page_handler(
                     "woff" => "font/woff",
                     "json" => "application/json",
                     "xml" => "application/xml",
+                    "wasm" => "application/wasm",
+                    "wit" => "text/plain",
                     _ => "application/octet-stream",
                 };
                 match std::fs::read(&static_path) {
@@ -792,7 +812,65 @@ async fn build_with_hooks_async(
         );
     }
 
+    // Generate MCP manifest for agent discovery
+    if config.mcp.enabled {
+        let manifest = generate_mcp_manifest_json(config);
+        map.insert("/.well-known/mcp.json".to_string(), manifest.clone());
+        map.insert("/.well-known/mcp".to_string(), manifest.clone());
+        map.insert("/.mcp.json".to_string(), manifest);
+        map.insert(
+            "/bin/geoff-sparql.wit".to_string(),
+            include_str!("../components/geoff-sparql.wit").to_string(),
+        );
+    }
+
     Ok(map)
+}
+
+fn generate_mcp_manifest_json(config: &SiteConfig) -> String {
+    let base = config.base_url.trim_end_matches('/');
+    let wasm_url = config
+        .mcp
+        .wasm_url
+        .as_deref()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{base}/bin/geoff-sparql.wasm"));
+    let description =
+        config.mcp.description.as_deref().unwrap_or(
+            "Execute a SPARQL SELECT or ASK query against the site's RDF knowledge graph",
+        );
+    let dataset_url = format!("{base}/{}", config.search.output);
+    let site_name = config
+        .base_url
+        .replace("https://", "")
+        .replace("http://", "")
+        .replace('/', "-")
+        .trim_end_matches('-')
+        .to_string();
+
+    let manifest = serde_json::json!({
+        "mcp_version": "1.0",
+        "name": format!("{site_name}-knowledge"),
+        "description": format!("Structured knowledge base for {}", config.title),
+        "tools": [{
+            "name": "sparql_query",
+            "description": description,
+            "runtime": "wasm-wasi",
+            "binary_url": wasm_url,
+            "wit_url": format!("{base}/bin/geoff-sparql.wit"),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "SPARQL SELECT or ASK query" },
+                    "dataset_url": { "type": "string", "description": "URL of the N-Triples dataset" }
+                },
+                "required": ["query"]
+            },
+            "fixed_arguments": { "dataset_url": dataset_url },
+            "datasets": []
+        }]
+    });
+    serde_json::to_string_pretty(&manifest).unwrap_or_default()
 }
 
 fn generate_dev_search_page(config: &SiteConfig) -> String {

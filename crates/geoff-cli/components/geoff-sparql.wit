@@ -1,0 +1,39 @@
+package geoff:sparql@0.1.0;
+
+/// SPARQL query interface for Geoff RDF knowledge graphs.
+///
+/// This interface is implemented by the geoff-sparql WASM module and
+/// consumed by AI agents that discover it via the MCP manifest.
+interface sparql-tool {
+    /// Result of a successful SPARQL query.
+    record query-result {
+        /// JSON array of result bindings: [{"var1": "val1", ...}, ...]
+        json-data: string,
+        /// List of variable names in the result set.
+        variable-names: list<string>,
+        /// Number of result rows.
+        row-count: u32,
+    }
+
+    /// Error from a failed SPARQL query.
+    record query-error {
+        /// Human-readable error message.
+        message: string,
+    }
+
+    /// Query response — either a result or an error.
+    variant query-response {
+        ok(query-result),
+        err(query-error),
+    }
+
+    /// Execute a SPARQL SELECT or ASK query against N-Triples data.
+    ///
+    /// The `ntriples-data` parameter contains the full N-Triples content
+    /// to load into the in-memory store before querying.
+    query: func(sparql: string, ntriples-data: string) -> query-response;
+}
+
+world geoff-sparql {
+    export sparql-tool;
+}
