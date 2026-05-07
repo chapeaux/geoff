@@ -425,6 +425,15 @@ async fn page_handler(
                     .into_response();
             }
 
+            if path.ends_with(".js") {
+                return (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+                    content.clone(),
+                )
+                    .into_response();
+            }
+
             // Inject hot-reload script before </body>
             let injected = if let Some(pos) = content.rfind("</body>") {
                 format!(
