@@ -156,6 +156,7 @@ class GeoffFacetedSearch extends HTMLElement {
     this._activeFacets = new Set();
     this._initialized = false;
     this._allSections = [];
+    this._generalActive = true;
   }
 
   async connectedCallback() {
@@ -208,12 +209,20 @@ class GeoffFacetedSearch extends HTMLElement {
     // Restore facets from URL
     const facetParam = params.get('facets');
     if (facetParam) {
-      if (facetParam === 'all') {
+      const names = facetParam === 'all' ? null : facetParam.split(',');
+      if (!names) {
         await this._selectAll();
       } else {
-        for (const name of facetParam.split(',')) {
+        for (const name of names) {
+          if (name === 'general') continue; // handled separately
           await this._loadFacet(name);
         }
+      }
+      // Restore general state
+      if (params.get('general') === 'false') {
+        this._generalActive = false;
+        const gcb = this.querySelector('[data-facet="general"]');
+        if (gcb) gcb.checked = false;
       }
       this._syncCheckboxes();
     }
@@ -298,7 +307,7 @@ class GeoffFacetedSearch extends HTMLElement {
     container.classList.remove('gfs-loading');
     container.innerHTML = `
       <label class="gfs-facet gfs-facet-general">
-        <input type="checkbox" data-facet="general" checked disabled />
+        <input type="checkbox" data-facet="general" checked />
         <span class="gfs-facet-label">General</span>
         <span class="gfs-facet-count" data-count="general"></span>
       </label>
@@ -322,7 +331,13 @@ class GeoffFacetedSearch extends HTMLElement {
 
   async _onFacetChange(cb) {
     const facet = cb.dataset.facet;
-    if (facet === 'general') return;
+
+    if (facet === 'general') {
+      this._generalActive = cb.checked;
+      this._updateUrl();
+      this._doSearch();
+      return;
+    }
 
     if (facet === 'all') {
       if (cb.checked) {
@@ -403,12 +418,20 @@ class GeoffFacetedSearch extends HTMLElement {
       if (tokens.length > 0) filters.push(this._buildFilter(tokens));
     }
 
-    // Build section filter: selected sections + always include general
-    if (hasFacets && this._activeFacets.size < this._facets.length) {
+    // Build section filter based on active facets + general toggle
+    const needsSectionFilter = hasFacets || !this._generalActive;
+    if (needsSectionFilter) {
       const parts = [...this._activeFacets].map(f => `CONTAINS(STR(?s), "/${f}/")`);
-      const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
-      parts.push(`(${generalFilter})`);
-      filters.push(`(${parts.join(' || ')})`);
+      if (this._generalActive) {
+        const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
+        parts.push(`(${generalFilter})`);
+      }
+      if (parts.length > 0) {
+        filters.push(`(${parts.join(' || ')})`);
+      } else {
+        // General unchecked, no sections checked — nothing matches
+        filters.push('false');
+      }
     }
 
     const filterClause = filters.length > 0 ? `FILTER(${filters.join(' && ')})` : '';
@@ -533,6 +556,11 @@ class GeoffFacetedSearch extends HTMLElement {
       url.searchParams.set('facets', 'all');
     } else {
       url.searchParams.set('facets', [...this._activeFacets].sort().join(','));
+    }
+    if (!this._generalActive) {
+      url.searchParams.set('general', 'false');
+    } else {
+      url.searchParams.delete('general');
     }
     history.replaceState(null, '', url);
   }
