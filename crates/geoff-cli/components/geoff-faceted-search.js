@@ -34,31 +34,29 @@ geoff-faceted-search {
   padding: 0;
 }
 .gfs-facet {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.5rem;
   margin-bottom: 0.25rem;
-  border: 1px solid var(--gfs-border, #ddd);
   border-radius: var(--gfs-radius, 4px);
-  background: var(--gfs-facet-bg, transparent);
-  color: inherit;
   cursor: pointer;
-  text-align: left;
   font: inherit;
   font-size: 0.9em;
 }
 .gfs-facet:hover {
   background: var(--gfs-facet-hover, #f5f5f5);
 }
-.gfs-facet[aria-pressed="true"] {
-  background: var(--gfs-facet-active, #e8f0fe);
-  border-color: var(--gfs-facet-active-border, #4285f4);
-  font-weight: 600;
+.gfs-facet input[type="checkbox"] {
+  accent-color: var(--gfs-facet-active-border, #4285f4);
 }
-.gfs-facet .gfs-facet-count {
-  float: right;
-  opacity: 0.5;
-  font-weight: normal;
+.gfs-facet-all {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gfs-divider, #eee);
+  font-size: 0.85em;
+  opacity: 0.8;
 }
 .gfs-input {
   width: 100%;
@@ -281,65 +279,101 @@ class GeoffFacetedSearch extends HTMLElement {
 
     container.classList.remove('gfs-loading');
     container.innerHTML = `
-      <button class="gfs-facet" data-facet="all" aria-pressed="true">All</button>
       ${this._facets.map(f => `
-        <button class="gfs-facet" data-facet="${this._esc(f.name)}" aria-pressed="false">
+        <label class="gfs-facet">
+          <input type="checkbox" data-facet="${this._esc(f.name)}" />
           ${this._titleCase(f.name)}
-        </button>
+        </label>
       `).join('')}
+      <label class="gfs-facet gfs-facet-all">
+        <input type="checkbox" data-facet="all" />
+        Select all
+      </label>
     `;
 
-    container.querySelectorAll('.gfs-facet').forEach(btn => {
-      btn.addEventListener('click', () => this._toggleFacet(btn));
+    container.querySelectorAll('input[data-facet]').forEach(cb => {
+      cb.addEventListener('change', () => this._toggleFacet(cb));
     });
-  }
 
-  async _toggleFacet(btn) {
-    const facet = btn.dataset.facet;
-    const allBtn = this.querySelector('[data-facet="all"]');
-
-    if (facet === 'all') {
-      this._activeFacets.clear();
-      this.querySelectorAll('.gfs-facet').forEach(b => b.setAttribute('aria-pressed', 'false'));
-      allBtn.setAttribute('aria-pressed', 'true');
-
-      // Load all partition graphs that haven't been loaded yet
-      for (const f of this._facets) {
-        if (!f.loaded) {
-          await this._loadGraph(`/search/${f.name}.nt`);
-          f.loaded = true;
-        }
-      }
-    } else {
-      allBtn.setAttribute('aria-pressed', 'false');
-      const isActive = btn.getAttribute('aria-pressed') === 'true';
-      if (isActive) {
-        this._activeFacets.delete(facet);
-        btn.setAttribute('aria-pressed', 'false');
-        if (this._activeFacets.size === 0) {
-          allBtn.setAttribute('aria-pressed', 'true');
-        }
+    // Restore facet state from URL
+    const params = new URLSearchParams(location.search);
+    const facetParam = params.get('facets');
+    if (facetParam) {
+      if (facetParam === 'all') {
+        this.querySelector('[data-facet="all"]').checked = true;
+        this._toggleFacet(this.querySelector('[data-facet="all"]'));
       } else {
-        this._activeFacets.add(facet);
-        btn.setAttribute('aria-pressed', 'true');
-
-        // Load the facet graph on demand — resolve URL relative to current origin
-        const facetData = this._facets.find(f => f.name === facet);
-        if (facetData && !facetData.loaded) {
-          btn.classList.add('gfs-loading');
-          const facetUrl = `/search/${facet}.nt`;
-          await this._loadGraph(facetUrl);
-          facetData.loaded = true;
-          btn.classList.remove('gfs-loading');
+        for (const name of facetParam.split(',')) {
+          const cb = this.querySelector(`[data-facet="${name}"]`);
+          if (cb) {
+            cb.checked = true;
+            this._toggleFacet(cb);
+          }
         }
       }
     }
+  }
 
-    // Re-run search with new facet selection
+  async _toggleFacet(cb) {
+    const facet = cb.dataset.facet;
+    const allCb = this.querySelector('[data-facet="all"]');
+
+    if (facet === 'all') {
+      if (cb.checked) {
+        // Select all: check all facets and load their graphs
+        this.querySelectorAll('input[data-facet]').forEach(c => { c.checked = true; });
+        for (const f of this._facets) {
+          this._activeFacets.add(f.name);
+          if (!f.loaded) {
+            await this._loadGraph(`/search/${f.name}.nt`);
+            f.loaded = true;
+          }
+        }
+      } else {
+        // Deselect all
+        this._activeFacets.clear();
+        this.querySelectorAll('input[data-facet]').forEach(c => { c.checked = false; });
+      }
+    } else {
+      if (cb.checked) {
+        this._activeFacets.add(facet);
+        const facetData = this._facets.find(f => f.name === facet);
+        if (facetData && !facetData.loaded) {
+          cb.parentElement.classList.add('gfs-loading');
+          await this._loadGraph(`/search/${facet}.nt`);
+          facetData.loaded = true;
+          cb.parentElement.classList.remove('gfs-loading');
+        }
+      } else {
+        this._activeFacets.delete(facet);
+      }
+
+      // Update "all" checkbox state
+      if (allCb) {
+        allCb.checked = this._activeFacets.size === this._facets.length;
+      }
+    }
+
+    // Update URL with facet state
+    this._updateUrl();
+
+    // Re-run search
     const input = this.querySelector('.gfs-input');
     if (input.value.trim()) {
       this._search(input.value);
     }
+  }
+
+  _updateUrl() {
+    const url = new URL(location.href);
+    if (this._activeFacets.size === 0) {
+      url.searchParams.delete('facets');
+    } else if (this._activeFacets.size === this._facets.length) {
+      url.searchParams.set('facets', 'all');
+    } else {
+      url.searchParams.set('facets', [...this._activeFacets].sort().join(','));
+    }
+    history.replaceState(null, '', url);
   }
 
   _search(query) {
