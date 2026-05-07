@@ -8,6 +8,7 @@ homepage.workspace = true
 description = "Semantically rich static site generator built on W3C web standards"
 keywords = ["static-site", "rdf", "sparql", "semantic-web", "jamstack"]
 categories = ["web-programming", "template-engine", "command-line-utilities"]
+include = ["src/**/*", "components/**/*", "Cargo.toml"]
 
 [[bin]]
 name = "geoff"

@@ -33,6 +33,33 @@ pub struct SearchConfig {
     /// or any frontmatter field name (resolved via the mapping registry).
     #[serde(default)]
     pub partition: Option<String>,
+    /// Generate a built-in /search page (default: true when search is enabled).
+    #[serde(default = "default_true")]
+    pub page: bool,
+    /// Title for the search page.
+    #[serde(default = "default_search_title")]
+    pub title: Option<String>,
+    /// Custom template for the search page (overrides the built-in template).
+    #[serde(default)]
+    pub template: Option<String>,
+    /// Maximum results per query.
+    #[serde(default = "default_search_limit")]
+    pub limit: u32,
+    /// Placeholder text for the search input.
+    #[serde(default = "default_search_placeholder")]
+    pub placeholder: String,
+}
+
+fn default_search_title() -> Option<String> {
+    Some("Search".to_string())
+}
+
+fn default_search_limit() -> u32 {
+    50
+}
+
+fn default_search_placeholder() -> String {
+    "Search…".to_string()
 }
 
 fn default_search_output() -> String {

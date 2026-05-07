@@ -639,6 +639,23 @@ async fn cmd_build(
         }
     }
 
+    // Generate search page if enabled
+    if config.search.enabled && config.search.page {
+        let search_html = generate_search_page(&config);
+        let search_page_path = output_dir.join("search").join("index.html");
+        if let Some(parent) = search_page_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&search_page_path, &search_html)?;
+
+        // Copy faceted search component
+        let component_src = include_str!("../components/geoff-faceted-search.js");
+        let component_path = output_dir.join("geoff-faceted-search.js");
+        std::fs::write(&component_path, component_src)?;
+
+        v.detail("Generated /search/ page");
+    }
+
     // Dispatch on_build_complete
     let output_dir_utf8 = camino::Utf8Path::new(output_dir.as_str());
     registry
@@ -1087,6 +1104,35 @@ fn make_token_entry(value: &str, token_type: Option<&str>) -> serde_json::Value 
         entry.insert("$type".to_string(), serde_json::json!(t));
     }
     serde_json::Value::Object(entry)
+}
+
+fn generate_search_page(config: &geoff_core::config::SiteConfig) -> String {
+    let title = config.search.title.as_deref().unwrap_or("Search");
+    let site_title = &config.title;
+    let placeholder = &config.search.placeholder;
+    let limit = config.search.limit;
+    let index = &config.search.output;
+
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} | {site_title}</title>
+  <script type="module" src="/geoff-faceted-search.js"></script>
+</head>
+<body>
+  <main>
+    <geoff-faceted-search
+      index="/{index}"
+      limit="{limit}"
+      placeholder="{placeholder}">
+    </geoff-faceted-search>
+  </main>
+</body>
+</html>"#
+    )
 }
 
 fn write_partitioned_search(
