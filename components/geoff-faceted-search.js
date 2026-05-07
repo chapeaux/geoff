@@ -392,13 +392,16 @@ class GeoffFacetedSearch extends HTMLElement {
     const hasQuery = query && query.trim().length > 0;
     const hasFacets = this._activeFacets.size > 0;
 
+    if (!this._store) return;
+
+    // Always update facet counts (even with no query)
+    this._updateFacetCounts(hasQuery ? query : null);
+
     if (!hasQuery && !hasFacets) {
       results.innerHTML = '';
       this._setStatus('');
       return;
     }
-
-    if (!this._store) return;
 
     const limit = parseInt(this.getAttribute('limit') || '50', 10);
     const filters = [];
@@ -443,7 +446,6 @@ class GeoffFacetedSearch extends HTMLElement {
         arr = [...this._store.query(sparql)];
       }
       this._renderResults(arr, query);
-      this._updateFacetCounts(hasQuery ? query : null);
 
       // Update URL params
       const url = new URL(location.href);
@@ -492,10 +494,14 @@ class GeoffFacetedSearch extends HTMLElement {
           count = parseInt(result[0]?.count || '0', 10);
         } else {
           const result = [...this._store.query(sparql)];
-          count = parseInt(this._v(result[0], 'count') || '0', 10);
+          if (result[0]) {
+            const raw = result[0].get('count');
+            count = parseInt(raw?.value || raw || '0', 10);
+          }
         }
         el.textContent = count > 0 ? `(${count})` : '';
-      } catch {
+      } catch (e) {
+        console.warn(`[geoff-faceted-search] count error for ${f.name}:`, e);
         el.textContent = '';
       }
     }
