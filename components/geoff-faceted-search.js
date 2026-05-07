@@ -302,6 +302,14 @@ class GeoffFacetedSearch extends HTMLElement {
       this._activeFacets.clear();
       this.querySelectorAll('.gfs-facet').forEach(b => b.setAttribute('aria-pressed', 'false'));
       allBtn.setAttribute('aria-pressed', 'true');
+
+      // Load all partition graphs that haven't been loaded yet
+      for (const f of this._facets) {
+        if (!f.loaded) {
+          await this._loadGraph(`/search/${f.name}.nt`);
+          f.loaded = true;
+        }
+      }
     } else {
       allBtn.setAttribute('aria-pressed', 'false');
       const isActive = btn.getAttribute('aria-pressed') === 'true';
