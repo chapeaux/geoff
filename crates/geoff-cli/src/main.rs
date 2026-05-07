@@ -510,6 +510,17 @@ async fn cmd_build(
     // Load or skip cache based on --full flag
     let old_cache = if full {
         v.detail("Full rebuild requested, ignoring cache");
+        // Clear old output and cache
+        if output_dir.exists() {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            std::fs::create_dir_all(&output_dir)?;
+            v.detail("Cleared output directory");
+        }
+        let cache_path = path.join(".geoff");
+        if cache_path.exists() {
+            let _ = std::fs::remove_dir_all(&cache_path);
+            v.detail("Cleared build cache");
+        }
         None
     } else {
         Some(BuildCache::load(path))
