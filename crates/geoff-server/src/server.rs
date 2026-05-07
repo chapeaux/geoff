@@ -504,15 +504,11 @@ async fn theme_editor_component_handler(
         "geoff-token-field.js" => Some(include_str!("../components/geoff-token-field.js")),
         "geoff-token-group.js" => Some(include_str!("../components/geoff-token-group.js")),
         "geoff-token-editor.js" => Some(include_str!("../components/geoff-token-editor.js")),
-        "geoff-theme-preview.js" => {
-            Some(include_str!("../components/geoff-theme-preview.js"))
+        "geoff-theme-preview.js" => Some(include_str!("../components/geoff-theme-preview.js")),
+        "geoff-theme-editor-app.js" => {
+            Some(include_str!("../components/geoff-theme-editor-app.js"))
         }
-        "geoff-theme-editor-app.js" => Some(include_str!(
-            "../components/geoff-theme-editor-app.js"
-        )),
-        "geoff-color-palette.js" => {
-            Some(include_str!("../components/geoff-color-palette.js"))
-        }
+        "geoff-color-palette.js" => Some(include_str!("../components/geoff-color-palette.js")),
         "geoff-token-tree.js" => Some(include_str!("../components/geoff-token-tree.js")),
         "geoff-create-theme.js" => Some(include_str!("../components/geoff-create-theme.js")),
         "geoff-solid-auth.js" => Some(include_str!("../components/geoff-solid-auth.js")),
