@@ -195,9 +195,17 @@ class GeoffFacetedSearch extends HTMLElement {
 
   async _init() {
     try {
-      this._ox = await import('https://esm.sh/oxigraph@0.5');
-      await this._ox.default();
-      this._store = new this._ox.Store();
+      // Try local GeoffSparql engine first, fall back to CDN Oxigraph
+      try {
+        const mod = await import('/bin/geoff_sparql_wasm.js');
+        await mod.default();
+        this._store = new mod.GeoffSparql();
+        this._store._geoff = true;
+      } catch {
+        const ox = await import('https://esm.sh/oxigraph@0.5');
+        await ox.default();
+        this._store = new ox.Store();
+      }
 
       // Load main graph (includes manifest)
       const indexUrl = this.getAttribute('index') || '/search.nt';
@@ -217,7 +225,11 @@ class GeoffFacetedSearch extends HTMLElement {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to fetch ${url}`);
       const nt = await response.text();
-      this._store.load(nt, { format: 'nt' });
+      if (this._store._geoff) {
+        this._store.load(nt);
+      } else {
+        this._store.load(nt, { format: 'nt' });
+      }
       this._loadedGraphs.add(url);
     } catch (e) {
       console.error(`[geoff-faceted-search] Failed to load ${url}:`, e);
@@ -234,11 +246,16 @@ class GeoffFacetedSearch extends HTMLElement {
     `;
 
     try {
-      const bindings = this._store.query(sparql);
-      const arr = [...bindings];
+      let arr;
+      if (this._store._geoff) {
+        arr = JSON.parse(this._store.query(sparql));
+      } else {
+        arr = [...this._store.query(sparql)];
+      }
+      const v = (row, key) => row.get ? row.get(key)?.value : row[key];
       this._facets = arr.map(row => ({
-        name: row.get('name')?.value || '',
-        url: row.get('url')?.value || '',
+        name: v(row, 'name') || '',
+        url: v(row, 'url') || '',
         loaded: false,
       }));
     } catch (e) {
@@ -343,8 +360,12 @@ class GeoffFacetedSearch extends HTMLElement {
     `;
 
     try {
-      const bindings = this._store.query(sparql);
-      const arr = [...bindings];
+      let arr;
+      if (this._store._geoff) {
+        arr = JSON.parse(this._store.query(sparql));
+      } else {
+        arr = [...this._store.query(sparql)];
+      }
       this._renderResults(arr, query);
 
       // Update URL params
@@ -398,10 +419,15 @@ class GeoffFacetedSearch extends HTMLElement {
     return groupFilters.length === 1 ? groupFilters[0] : `(${groupFilters.join(' || ')})`;
   }
 
+  _v(row, key) {
+    if (row.get) return row.get(key)?.value;
+    return row[key];
+  }
+
   _resolveUrl(row) {
-    const url = row.get('url')?.value;
+    const url = this._v(row, 'url');
     if (url) return url;
-    const s = row.get('s')?.value || '';
+    const s = this._v(row, 's') || '';
     if (s.startsWith('urn:geoff:content:'))
       return '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '.html').replace(/index\.html$/, '');
     return '#';
@@ -418,12 +444,12 @@ class GeoffFacetedSearch extends HTMLElement {
     const seen = new Set();
     const results = [];
     for (const row of bindings) {
-      const title = row.get('title')?.value || 'Untitled';
+      const title = this._v(row, 'title') || 'Untitled';
       const url = this._resolveUrl(row);
       if (seen.has(url)) continue;
       seen.add(url);
-      const desc = row.get('desc')?.value || '';
-      const date = row.get('date')?.value || '';
+      const desc = this._v(row, 'desc') || '';
+      const date = this._v(row, 'date') || '';
       const parts = url.replace(/^\//, '').replace(/\/$/, '').replace(/\.html$/, '').split('/');
       const context = parts.length > 1
         ? parts.slice(0, -1).map(p => p.replace(/-/g, ' ')).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' › ')

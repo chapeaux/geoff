@@ -16,3 +16,5 @@
 
 # Deno cache
 .deno
+crates/geoff-sparql-wasm/pkg/
+crates/geoff-sparql-wasm/target/
