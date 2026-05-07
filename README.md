@@ -22,6 +22,7 @@ Geoff is named after the "Jeff Cap" (newsboy cap), part of the [Chapeaux](https:
 - **Design token theming** — W3C DTCG tokens → CSS custom properties with inheritance, `light-dark()`, and critical/deferred split
 - **Visual theme editor** — `geoff theme edit` serves a web component UI for live token editing with SHACL validation
 - **Client-side SPARQL search** — Oxigraph WASM in the browser, querying the same graph that built the site
+- **AI agent discovery** — MCP manifest + WASM SPARQL engine lets AI agents query the site's knowledge graph
 - **Asset optimization** — CSS/JS minification, image WebP conversion, cache-busting hashes
 - **Incremental builds** — Only rebuild changed pages
 - **Parallel rendering** — Pages render concurrently via Rayon
@@ -587,6 +588,34 @@ placeholder = "Search…"     # input placeholder
 The `<geoff-faceted-search>` component discovers available partitions from the manifest in `search.nt`, displays facet toggle buttons, and loads partition graphs on demand. Partition strategies: `"section"`, `"type"`, `"date-year"`, `"date-month"`, or any mapped frontmatter field name.
 
 To replace the built-in search page with your theme's design, provide a `search.html` template that includes `<geoff-faceted-search>` and set `search.template = "search.html"` in config.
+
+## AI Agent Discovery
+
+Geoff sites can expose their RDF knowledge graph to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Enable it in `geoff.toml`:
+
+```toml
+[mcp]
+enabled = true
+wasm_source = "cdn"         # or "local" to bundle the WASM engine
+```
+
+This generates a `.well-known/mcp.json` manifest that tells agents how to query the site:
+
+1. Agent fetches `https://example.com/.well-known/mcp.json`
+2. Manifest describes a `sparql_query` tool with WASM engine URL and data URL
+3. Agent downloads the WASM SPARQL engine and the N-Triples data
+4. Agent executes SPARQL queries locally — zero compute cost to the publisher
+
+The WASM engine (`geoff-sparql-wasm`) wraps Oxigraph and compiles to WebAssembly. It's the same engine used by the browser search components, so agents see the exact same data as human visitors.
+
+Build the WASM module:
+
+```sh
+cd crates/geoff-sparql-wasm
+wasm-pack build --target web --release
+```
+
+The manifest includes dataset partitions when search partitioning is configured, so agents can query specific subsets on demand.
 
 ## Architecture
 

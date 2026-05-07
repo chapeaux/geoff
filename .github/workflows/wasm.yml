@@ -1,0 +1,42 @@
+name: WASM Build
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-wasm:
+    name: Build geoff-sparql WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM
+        run: |
+          cd crates/geoff-sparql-wasm
+          wasm-pack build --target web --release
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: geoff-sparql-wasm
+          path: |
+            crates/geoff-sparql-wasm/pkg/geoff_sparql_wasm.js
+            crates/geoff-sparql-wasm/pkg/geoff_sparql_wasm_bg.wasm
+            crates/geoff-sparql-wasm/pkg/geoff_sparql_wasm.d.ts
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            crates/geoff-sparql-wasm/pkg/geoff_sparql_wasm.js
+            crates/geoff-sparql-wasm/pkg/geoff_sparql_wasm_bg.wasm
