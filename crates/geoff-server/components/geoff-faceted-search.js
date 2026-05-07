@@ -1,13 +1,11 @@
 /**
  * <geoff-faceted-search> — Full-page faceted search with on-demand graph loading.
  *
- * Discovers available search partitions from the manifest in search.nt,
- * displays facet buttons, and loads partition graphs on demand.
- *
  * Attributes:
  *   index       — URL of the main search index (default: "/search.nt")
  *   limit       — Maximum results per query (default: "50")
  *   placeholder — Input placeholder text (default: "Search…")
+ *   wasm-src    — Optional local WASM engine URL
  */
 
 const FACETED_STYLES = `
@@ -20,7 +18,7 @@ geoff-faceted-search {
   align-items: flex-start;
 }
 .gfs-sidebar {
-  flex: 0 0 200px;
+  flex: 0 0 220px;
   position: sticky;
   top: 1rem;
 }
@@ -60,19 +58,13 @@ geoff-faceted-search {
   min-width: 1.5em;
   text-align: right;
 }
-.gfs-facet-count:empty {
-  display: none;
-}
-.gfs-facet-global {
+.gfs-facet-general {
   opacity: 0.7;
+}
+.gfs-facet-all {
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--gfs-divider, #eee);
-}
-.gfs-facet-all {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--gfs-divider, #eee);
   font-size: 0.85em;
   opacity: 0.8;
 }
@@ -129,6 +121,18 @@ geoff-faceted-search {
   font-size: 0.8em;
   opacity: 0.5;
 }
+.gfs-badge {
+  display: inline-block;
+  font-size: 0.7em;
+  padding: 0.1em 0.5em;
+  border-radius: 3px;
+  background: var(--gfs-badge-bg, #e8f0fe);
+  color: var(--gfs-badge-color, #1967d2);
+  margin-left: 0.5em;
+  vertical-align: middle;
+  font-weight: 600;
+  text-transform: capitalize;
+}
 .gfs-loading {
   opacity: 0.6;
   font-style: italic;
@@ -147,11 +151,11 @@ class GeoffFacetedSearch extends HTMLElement {
   constructor() {
     super();
     this._store = null;
-    this._ox = null;
     this._loadedGraphs = new Set();
     this._facets = [];
     this._activeFacets = new Set();
     this._initialized = false;
+    this._allSections = [];
   }
 
   async connectedCallback() {
@@ -170,7 +174,7 @@ class GeoffFacetedSearch extends HTMLElement {
     this.innerHTML = `
       <div class="gfs-layout">
         <aside class="gfs-sidebar">
-          <h3 style="margin-top:0">Facets</h3>
+          <h3 style="margin-top:0">Filter</h3>
           <div class="gfs-facets gfs-loading">Loading…</div>
         </aside>
         <div class="gfs-main">
@@ -190,23 +194,31 @@ class GeoffFacetedSearch extends HTMLElement {
 
     input.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => this._search(input.value), 250);
+      debounce = setTimeout(() => this._doSearch(), 250);
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());
 
-    // Read query params
     const params = new URLSearchParams(location.search);
     const q = params.get('q');
-    if (q) {
-      input.value = q;
-    }
+    if (q) input.value = q;
 
     await this._init();
 
-    if (q) {
-      this._search(q);
+    // Restore facets from URL
+    const facetParam = params.get('facets');
+    if (facetParam) {
+      if (facetParam === 'all') {
+        await this._selectAll();
+      } else {
+        for (const name of facetParam.split(',')) {
+          await this._loadFacet(name);
+        }
+      }
+      this._syncCheckboxes();
     }
+
+    this._doSearch();
   }
 
   async _init() {
@@ -229,11 +241,8 @@ class GeoffFacetedSearch extends HTMLElement {
         this._store = new ox.Store();
       }
 
-      // Load main graph (includes manifest)
       const indexUrl = this.getAttribute('index') || '/search.nt';
       await this._loadGraph(indexUrl);
-
-      // Discover facets from manifest
       this._discoverFacets();
     } catch (e) {
       this._setStatus('Search unavailable');
@@ -245,7 +254,7 @@ class GeoffFacetedSearch extends HTMLElement {
     if (this._loadedGraphs.has(url)) return;
     try {
       const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+      if (!response.ok) throw new Error(`${response.status} ${url}`);
       const nt = await response.text();
       if (this._store._geoff) {
         this._store.load(nt);
@@ -254,7 +263,7 @@ class GeoffFacetedSearch extends HTMLElement {
       }
       this._loadedGraphs.add(url);
     } catch (e) {
-      console.error(`[geoff-faceted-search] Failed to load ${url}:`, e);
+      console.warn(`[geoff-faceted-search] Failed to load ${url}:`, e.message);
     }
   }
 
@@ -263,27 +272,18 @@ class GeoffFacetedSearch extends HTMLElement {
       SELECT ?url ?name WHERE {
         ?url <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:geoff:SearchGraph> .
         ?url <urn:geoff:graphName> ?name .
-      }
-      ORDER BY ?name
+      } ORDER BY ?name
     `;
-
     try {
-      let arr;
-      if (this._store._geoff) {
-        arr = JSON.parse(this._store.query(sparql));
-      } else {
-        arr = [...this._store.query(sparql)];
-      }
-      const v = (row, key) => row.get ? row.get(key)?.value : row[key];
+      const arr = this._query(sparql);
       this._facets = arr.map(row => ({
-        name: v(row, 'name') || '',
-        url: v(row, 'url') || '',
+        name: this._v(row, 'name') || '',
         loaded: false,
       }));
+      this._allSections = this._facets.map(f => f.name);
     } catch (e) {
       console.error('[geoff-faceted-search] facet discovery error:', e);
     }
-
     this._renderFacets();
   }
 
@@ -297,94 +297,232 @@ class GeoffFacetedSearch extends HTMLElement {
 
     container.classList.remove('gfs-loading');
     container.innerHTML = `
-      <label class="gfs-facet gfs-facet-global">
-        <input type="checkbox" data-facet="global" checked disabled />
-        <span class="gfs-facet-label">Global</span>
-        <span class="gfs-facet-count" data-count-facet="global"></span>
+      <label class="gfs-facet gfs-facet-general">
+        <input type="checkbox" data-facet="general" checked disabled />
+        <span class="gfs-facet-label">General</span>
+        <span class="gfs-facet-count" data-count="general"></span>
+      </label>
+      <label class="gfs-facet gfs-facet-all">
+        <input type="checkbox" data-facet="all" />
+        <span class="gfs-facet-label">Select all</span>
       </label>
       ${this._facets.map(f => `
         <label class="gfs-facet">
           <input type="checkbox" data-facet="${this._esc(f.name)}" />
           <span class="gfs-facet-label">${this._titleCase(f.name)}</span>
-          <span class="gfs-facet-count" data-count-facet="${this._esc(f.name)}"></span>
+          <span class="gfs-facet-count" data-count="${this._esc(f.name)}"></span>
         </label>
       `).join('')}
-      <label class="gfs-facet gfs-facet-all">
-        <input type="checkbox" data-facet="all" />
-        <span class="gfs-facet-label">Select all</span>
-      </label>
     `;
 
     container.querySelectorAll('input[data-facet]').forEach(cb => {
-      cb.addEventListener('change', () => this._toggleFacet(cb));
+      cb.addEventListener('change', () => this._onFacetChange(cb));
     });
-
-    // Restore facet state from URL
-    const params = new URLSearchParams(location.search);
-    const facetParam = params.get('facets');
-    if (facetParam) {
-      if (facetParam === 'all') {
-        this.querySelector('[data-facet="all"]').checked = true;
-        this._toggleFacet(this.querySelector('[data-facet="all"]'));
-      } else {
-        for (const name of facetParam.split(',')) {
-          const cb = this.querySelector(`[data-facet="${name}"]`);
-          if (cb) {
-            cb.checked = true;
-            this._toggleFacet(cb);
-          }
-        }
-      }
-    }
   }
 
-  async _toggleFacet(cb) {
+  async _onFacetChange(cb) {
     const facet = cb.dataset.facet;
-    if (facet === 'global') return;
-    const allCb = this.querySelector('[data-facet="all"]');
+    if (facet === 'general') return;
 
     if (facet === 'all') {
       if (cb.checked) {
-        // Select all section facets (not global)
-        this.querySelectorAll('input[data-facet]:not([data-facet="global"]):not([data-facet="all"])').forEach(c => { c.checked = true; });
-        for (const f of this._facets) {
-          this._activeFacets.add(f.name);
-          if (!f.loaded) {
-            await this._loadGraph(`/search/${f.name}.nt`);
-            f.loaded = true;
-          }
-        }
+        await this._selectAll();
       } else {
-        // Deselect all section facets (not global)
-        this._activeFacets.clear();
-        this.querySelectorAll('input[data-facet]:not([data-facet="global"]):not([data-facet="all"])').forEach(c => { c.checked = false; });
+        this._deselectAll();
       }
     } else {
       if (cb.checked) {
-        this._activeFacets.add(facet);
-        const facetData = this._facets.find(f => f.name === facet);
-        if (facetData && !facetData.loaded) {
-          cb.parentElement.classList.add('gfs-loading');
-          await this._loadGraph(`/search/${facet}.nt`);
-          facetData.loaded = true;
-          cb.parentElement.classList.remove('gfs-loading');
-        }
+        await this._loadFacet(facet);
       } else {
         this._activeFacets.delete(facet);
       }
-
-      // Update "all" checkbox state
-      if (allCb) {
-        allCb.checked = this._activeFacets.size === this._facets.length;
-      }
+      this._syncAllCheckbox();
     }
 
-    // Update URL with facet state
+    this._syncCheckboxes();
     this._updateUrl();
+    this._doSearch();
+  }
 
-    // Re-run search (always, even with empty query — facet change should update results)
+  async _loadFacet(name) {
+    const f = this._facets.find(x => x.name === name);
+    if (f && !f.loaded) {
+      await this._loadGraph(`/search/${name}.nt`);
+      f.loaded = true;
+    }
+    this._activeFacets.add(name);
+  }
+
+  async _selectAll() {
+    for (const f of this._facets) {
+      await this._loadFacet(f.name);
+    }
+  }
+
+  _deselectAll() {
+    this._activeFacets.clear();
+  }
+
+  _syncCheckboxes() {
+    for (const f of this._facets) {
+      const cb = this.querySelector(`[data-facet="${f.name}"]`);
+      if (cb) cb.checked = this._activeFacets.has(f.name);
+    }
+    this._syncAllCheckbox();
+  }
+
+  _syncAllCheckbox() {
+    const allCb = this.querySelector('[data-facet="all"]');
+    if (allCb) allCb.checked = this._activeFacets.size === this._facets.length;
+  }
+
+  _doSearch() {
     const input = this.querySelector('.gfs-input');
-    this._search(input.value);
+    const query = input ? input.value.trim() : '';
+    this._updateCounts(query);
+    this._search(query);
+  }
+
+  _search(query) {
+    const container = this.querySelector('.gfs-results');
+    const hasQuery = query.length > 0;
+    const hasFacets = this._activeFacets.size > 0;
+
+    if (!hasQuery && !hasFacets) {
+      container.innerHTML = '';
+      this._setStatus('');
+      return;
+    }
+    if (!this._store) return;
+
+    const limit = parseInt(this.getAttribute('limit') || '50', 10);
+    const filters = [];
+
+    if (hasQuery) {
+      const tokens = this._parseQuery(query);
+      if (tokens.length > 0) filters.push(this._buildFilter(tokens));
+    }
+
+    // Build section filter: selected sections + always include general
+    if (hasFacets && this._activeFacets.size < this._facets.length) {
+      const parts = [...this._activeFacets].map(f => `CONTAINS(STR(?s), "/${f}/")`);
+      const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
+      parts.push(`(${generalFilter})`);
+      filters.push(`(${parts.join(' || ')})`);
+    }
+
+    const filterClause = filters.length > 0 ? `FILTER(${filters.join(' && ')})` : '';
+    const sparql = `
+      SELECT ?s ?title ?url ?desc ?date WHERE {
+        ?s <https://schema.org/name> ?title .
+        OPTIONAL { ?s <https://schema.org/url> ?url }
+        OPTIONAL { ?s <https://schema.org/description> ?desc }
+        OPTIONAL { ?s <https://schema.org/datePublished> ?date }
+        ${filterClause}
+      } ORDER BY DESC(?date) ?title LIMIT ${limit}
+    `;
+
+    try {
+      const arr = this._query(sparql);
+      this._renderResults(arr, query);
+
+      const url = new URL(location.href);
+      if (hasQuery) url.searchParams.set('q', query);
+      else url.searchParams.delete('q');
+      history.replaceState(null, '', url);
+    } catch (e) {
+      console.error('[geoff-faceted-search] query error:', e);
+      this._setStatus('Search error');
+    }
+  }
+
+  _updateCounts(query) {
+    if (!this._store) return;
+    const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
+
+    // General count
+    const generalEl = this.querySelector('[data-count="general"]');
+    if (generalEl) {
+      const gf = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
+      const c = this._countQuery(gf, textFilter);
+      generalEl.textContent = c > 0 ? `(${c})` : '';
+    }
+
+    // Section counts
+    for (const f of this._facets) {
+      const el = this.querySelector(`[data-count="${f.name}"]`);
+      if (!el) continue;
+      if (!f.loaded) {
+        el.textContent = '';
+        continue;
+      }
+      const c = this._countQuery(`CONTAINS(STR(?s), "/${f.name}/")`, textFilter);
+      el.textContent = c > 0 ? `(${c})` : '';
+    }
+  }
+
+  _countQuery(sectionFilter, textFilter) {
+    const filters = [sectionFilter];
+    if (textFilter) filters.push(textFilter);
+    const sparql = `
+      SELECT (COUNT(DISTINCT ?s) AS ?count) WHERE {
+        ?s <https://schema.org/name> ?title .
+        OPTIONAL { ?s <https://schema.org/description> ?desc }
+        FILTER(${filters.join(' && ')})
+      }
+    `;
+    try {
+      const arr = this._query(sparql);
+      return parseInt(this._v(arr[0], 'count') || '0', 10);
+    } catch {
+      return 0;
+    }
+  }
+
+  _sectionForSubject(s) {
+    for (const sec of this._allSections) {
+      if (s && s.includes(`/${sec}/`)) return sec;
+    }
+    return 'general';
+  }
+
+  _renderResults(bindings, query) {
+    const container = this.querySelector('.gfs-results');
+    if (!bindings || bindings.length === 0) {
+      container.innerHTML = '';
+      this._setStatus(query ? `No results for "${query}"` : '');
+      return;
+    }
+
+    const seen = new Set();
+    const results = [];
+    for (const row of bindings) {
+      const title = this._v(row, 'title') || 'Untitled';
+      const url = this._resolveUrl(row);
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const desc = this._v(row, 'desc') || '';
+      const date = this._v(row, 'date') || '';
+      const s = this._v(row, 's') || '';
+      const badge = this._sectionForSubject(s);
+      const parts = url.replace(/^\//, '').replace(/\/$/, '').replace(/\.html$/, '').split('/');
+      const context = parts.length > 1
+        ? parts.slice(0, -1).map(p => p.replace(/-/g, ' ')).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' › ')
+        : '';
+      results.push({ title, url, desc, date, context, badge });
+    }
+
+    this._setStatus(`${results.length} result${results.length === 1 ? '' : 's'}`);
+    container.innerHTML = results.map(({ title, url, desc, date, context, badge }) => `
+      <li class="gfs-result">
+        <a href="${this._esc(url)}">
+          <strong>${this._esc(title)}<span class="gfs-badge">${this._esc(badge)}</span></strong>
+          ${date ? `<time>${date}</time>` : ''}
+          ${context ? `<span class="gfs-context">${this._esc(context)}</span>` : ''}
+          ${desc ? `<small>${this._esc(desc)}</small>` : ''}
+        </a>
+      </li>
+    `).join('');
   }
 
   _updateUrl() {
@@ -399,137 +537,26 @@ class GeoffFacetedSearch extends HTMLElement {
     history.replaceState(null, '', url);
   }
 
-  _search(query) {
-    const results = this.querySelector('.gfs-results');
-    const hasQuery = query && query.trim().length > 0;
-    const hasFacets = this._activeFacets.size > 0;
+  // --- Helpers ---
 
-    if (!this._store) return;
-
-    // Always update facet counts (even with no query)
-    this._updateFacetCounts(hasQuery ? query : null);
-
-    if (!hasQuery && !hasFacets) {
-      results.innerHTML = '';
-      this._setStatus('');
-      return;
-    }
-
-    const limit = parseInt(this.getAttribute('limit') || '50', 10);
-    const filters = [];
-
-    // Text search filter
-    if (hasQuery) {
-      const tokens = this._parseQuery(query.trim());
-      if (tokens.length > 0) {
-        filters.push(this._buildFilter(tokens));
-      }
-    }
-
-    // Facet filter: restrict to selected sections + always include global (root) pages
-    if (hasFacets && this._activeFacets.size < this._facets.length) {
-      const allSections = this._facets.map(f => f.name);
-      const globalFilter = allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
-      const sectionFilters = [...this._activeFacets].map(f =>
-        `CONTAINS(STR(?s), "/${f}/")`
-      );
-      // Include pages from selected sections OR pages not in any section (global)
-      filters.push(`(${sectionFilters.join(' || ')} || (${globalFilter}))`);
-    }
-
-    const filterClause = filters.length > 0
-      ? `FILTER(${filters.join(' && ')})`
-      : '';
-
-    const sparql = `
-      SELECT ?s ?title ?url ?desc ?date WHERE {
-        ?s <https://schema.org/name> ?title .
-        OPTIONAL { ?s <https://schema.org/url> ?url }
-        OPTIONAL { ?s <https://schema.org/description> ?desc }
-        OPTIONAL { ?s <https://schema.org/datePublished> ?date }
-        ${filterClause}
-      }
-      ORDER BY DESC(?date) ?title
-      LIMIT ${limit}
-    `;
-
-    try {
-      let arr;
-      if (this._store._geoff) {
-        arr = JSON.parse(this._store.query(sparql));
-      } else {
-        arr = [...this._store.query(sparql)];
-      }
-      this._renderResults(arr, query);
-
-      // Update URL params
-      const url = new URL(location.href);
-      if (hasQuery) {
-        url.searchParams.set('q', query);
-      } else {
-        url.searchParams.delete('q');
-      }
-      history.replaceState(null, '', url);
-    } catch (e) {
-      console.error('[geoff-faceted-search] query error:', e);
-      this._setStatus('Search error');
-    }
+  _query(sparql) {
+    if (this._store._geoff) return JSON.parse(this._store.query(sparql));
+    return [...this._store.query(sparql)];
   }
 
-  _runCount(sectionFilter, textFilter) {
-    const filters = [sectionFilter];
-    if (textFilter) filters.push(textFilter);
-    const sparql = `
-      SELECT (COUNT(DISTINCT ?s) AS ?count) WHERE {
-        ?s <https://schema.org/name> ?title .
-        OPTIONAL { ?s <https://schema.org/description> ?desc }
-        FILTER(${filters.join(' && ')})
-      }
-    `;
-    try {
-      if (this._store._geoff) {
-        const result = JSON.parse(this._store.query(sparql));
-        return parseInt(result[0]?.count || '0', 10);
-      } else {
-        const result = [...this._store.query(sparql)];
-        if (result[0]) {
-          const raw = result[0].get('count');
-          return parseInt(raw?.value || raw || '0', 10);
-        }
-      }
-    } catch (e) {
-      console.warn('[geoff-faceted-search] count error:', e);
-    }
-    return 0;
+  _v(row, key) {
+    if (!row) return undefined;
+    if (row.get) return row.get(key)?.value;
+    return row[key];
   }
 
-  _updateFacetCounts(query) {
-    if (!this._store) return;
-
-    const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
-
-    // Count global (root) pages — not in any section
-    const globalEl = this.querySelector('[data-count-facet="global"]');
-    if (globalEl) {
-      const allSections = this._facets.map(f => f.name);
-      const globalFilter = allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
-      const count = this._runCount(globalFilter, textFilter);
-      globalEl.textContent = `(${count})`;
-    }
-
-    // Count per-section facets
-    for (const f of this._facets) {
-      const el = this.querySelector(`[data-count-facet="${f.name}"]`);
-      if (!el) continue;
-
-      if (!f.loaded) {
-        el.textContent = '(–)';
-        continue;
-      }
-
-      const count = this._runCount(`CONTAINS(STR(?s), "/${f.name}/")`, textFilter);
-      el.textContent = `(${count})`;
-    }
+  _resolveUrl(row) {
+    const url = this._v(row, 'url');
+    if (url) return url;
+    const s = this._v(row, 's') || '';
+    if (s.startsWith('urn:geoff:content:'))
+      return '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '.html').replace(/index\.html$/, '');
+    return '#';
   }
 
   _parseQuery(input) {
@@ -560,68 +587,14 @@ class GeoffFacetedSearch extends HTMLElement {
       if (token.type === 'OR') groups.push([]);
       else groups[groups.length - 1].push(token);
     }
-    const groupFilters = groups
-      .filter(g => g.length > 0)
-      .map(group => {
-        const termFilters = group.map(t => {
-          const escaped = t.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-          const lower = escaped.toLowerCase();
-          return `(CONTAINS(LCASE(?title), "${lower}") || CONTAINS(LCASE(COALESCE(?desc, "")), "${lower}"))`;
-        });
-        return termFilters.length === 1 ? termFilters[0] : `(${termFilters.join(' && ')})`;
+    const groupFilters = groups.filter(g => g.length > 0).map(group => {
+      const tf = group.map(t => {
+        const escaped = t.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').toLowerCase();
+        return `(CONTAINS(LCASE(?title), "${escaped}") || CONTAINS(LCASE(COALESCE(?desc, "")), "${escaped}"))`;
       });
+      return tf.length === 1 ? tf[0] : `(${tf.join(' && ')})`;
+    });
     return groupFilters.length === 1 ? groupFilters[0] : `(${groupFilters.join(' || ')})`;
-  }
-
-  _v(row, key) {
-    if (row.get) return row.get(key)?.value;
-    return row[key];
-  }
-
-  _resolveUrl(row) {
-    const url = this._v(row, 'url');
-    if (url) return url;
-    const s = this._v(row, 's') || '';
-    if (s.startsWith('urn:geoff:content:'))
-      return '/' + s.replace('urn:geoff:content:', '').replace(/\.md$/, '.html').replace(/index\.html$/, '');
-    return '#';
-  }
-
-  _renderResults(bindings, query) {
-    const container = this.querySelector('.gfs-results');
-    if (!bindings || bindings.length === 0) {
-      container.innerHTML = '';
-      this._setStatus(`No results for "${query}"`);
-      return;
-    }
-
-    const seen = new Set();
-    const results = [];
-    for (const row of bindings) {
-      const title = this._v(row, 'title') || 'Untitled';
-      const url = this._resolveUrl(row);
-      if (seen.has(url)) continue;
-      seen.add(url);
-      const desc = this._v(row, 'desc') || '';
-      const date = this._v(row, 'date') || '';
-      const parts = url.replace(/^\//, '').replace(/\/$/, '').replace(/\.html$/, '').split('/');
-      const context = parts.length > 1
-        ? parts.slice(0, -1).map(p => p.replace(/-/g, ' ')).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' › ')
-        : '';
-      results.push({ title, url, desc, date, context });
-    }
-
-    this._setStatus(`${results.length} result${results.length === 1 ? '' : 's'}`);
-    container.innerHTML = results.map(({ title, url, desc, date, context }) => `
-      <li class="gfs-result">
-        <a href="${this._esc(url)}">
-          <strong>${this._esc(title)}</strong>
-          ${date ? `<time>${date}</time>` : ''}
-          ${context ? `<span class="gfs-context">${this._esc(context)}</span>` : ''}
-          ${desc ? `<small>${this._esc(desc)}</small>` : ''}
-        </a>
-      </li>
-    `).join('');
   }
 
   _setStatus(text) {
