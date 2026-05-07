@@ -25,6 +25,8 @@ See `INITIAL_PLAN.md` for the full architecture plan, workspace structure, phase
 - **`[linked_data]` config**: Controls RDFa, JSON-LD richness, Markdown link rewriting, default vocab, and custom prefixes.
 - **Critical CSS**: `static/critical.css` (global) and `static/critical-{template}.css` (per-template) are scanned during ingestion and inlined via the `critical_css` template variable. Populated per page based on template name.
 - **Design system tokens**: `[design] tokens = [...]` config loads external DTCG files. `geoff theme generate` creates `theme.json` with light-dark() aggregates. Token references resolve across file boundaries via `resolve_references_with_base()`. Inline `{ref}` resolution works in any string context (light-dark, color-mix, calc, etc.).
+- **Search partitioning**: `search.partition = "section"` splits the search index into per-section .nt files with a manifest in search.nt. `export_partitioned_ntriples()` in store.rs. Strategies: section, type, date-year, date-month, or any mapped field.
+- **Faceted search page**: Auto-generated `/search/` page with `<geoff-faceted-search>` component. Discovers partitions from manifest, loads graphs on demand. Theme-replaceable via `search.template`.
 
 ## Team
 

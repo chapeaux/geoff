@@ -393,6 +393,7 @@ minify_css = true
 
 [search]
 enabled = true
+partition = "section"
 
 [[plugins]]
 name = "sitemap"
@@ -567,7 +568,25 @@ enabled = true
 
 At build time, Geoff exports the RDF graph as N-Triples. The `<geoff-search>` web component lazy-loads Oxigraph WASM and runs real SPARQL queries against it — the same engine and same data model that built the site. The search index is also available during `geoff serve`.
 
-Search supports structured query syntax: `foo bar` (implicit AND), `"exact phrase"` (quoted), `foo OR bar`, and explicit `AND`. The component follows the ARIA combobox pattern with keyboard navigation (Arrow keys, Enter, Escape) and positions results using CSS anchor positioning with a fallback for older browsers.
+Search supports structured query syntax: `foo bar` (implicit AND), `"exact phrase"` (quoted), `foo OR bar`, and explicit `AND`. The component follows the ARIA combobox pattern with keyboard navigation (Arrow keys, Enter, Escape).
+
+### Faceted Search Page
+
+When search is enabled, Geoff auto-generates a `/search/` page with faceted search:
+
+```toml
+[search]
+enabled = true
+partition = "section"       # split graph by top-level directory
+page = true                 # auto-generate /search/ page (default: true)
+title = "Search"            # page title
+limit = 50                  # max results
+placeholder = "Search…"     # input placeholder
+```
+
+The `<geoff-faceted-search>` component discovers available partitions from the manifest in `search.nt`, displays facet toggle buttons, and loads partition graphs on demand. Partition strategies: `"section"`, `"type"`, `"date-year"`, `"date-month"`, or any mapped frontmatter field name.
+
+To replace the built-in search page with your theme's design, provide a `search.html` template that includes `<geoff-faceted-search>` and set `search.template = "search.html"` in config.
 
 ## Architecture
 
