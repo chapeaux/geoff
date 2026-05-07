@@ -274,7 +274,15 @@ pub fn render_pages(
 
             let rendered = renderer
                 .render_with_context(&parsed.template, &ctx)
-                .map_err(|e| format!("{}: {e}", parsed.output_path))?;
+                .map_err(|e| {
+                    let mut msg = format!("{}: {e}", parsed.output_path);
+                    let mut source = e.source();
+                    while let Some(cause) = source {
+                        msg.push_str(&format!("\n  caused by: {cause}"));
+                        source = cause.source();
+                    }
+                    msg
+                })?;
 
             let done = render_count.fetch_add(1, Ordering::Relaxed) + 1;
             if total_to_render > 1 {
