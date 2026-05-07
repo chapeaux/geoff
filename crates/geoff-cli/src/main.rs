@@ -629,10 +629,14 @@ async fn cmd_build(
 
     // Generate search index if enabled
     if config.search.enabled {
-        let nt = store.export_search_ntriples()?;
-        let search_path = output_dir.join(&config.search.output);
-        std::fs::write(&search_path, &nt)?;
-        v.detail(&format!("Wrote search index: {}", config.search.output));
+        if let Some(ref strategy) = config.search.partition {
+            write_partitioned_search(&store, &output_dir, strategy, &config.base_url, &config, v)?;
+        } else {
+            let nt = store.export_search_ntriples()?;
+            let search_path = output_dir.join(&config.search.output);
+            std::fs::write(&search_path, &nt)?;
+            v.detail(&format!("Wrote search index: {}", config.search.output));
+        }
     }
 
     // Dispatch on_build_complete
@@ -1083,6 +1087,181 @@ fn make_token_entry(value: &str, token_type: Option<&str>) -> serde_json::Value 
         entry.insert("$type".to_string(), serde_json::json!(t));
     }
     serde_json::Value::Object(entry)
+}
+
+fn write_partitioned_search(
+    store: &geoff_graph::store::ContentStore,
+    output_dir: &Utf8Path,
+    strategy: &str,
+    base_url: &str,
+    config: &geoff_core::config::SiteConfig,
+    v: Verbosity,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    type PartitionFn = Box<dyn Fn(&str) -> Option<String>>;
+    let partition_fn: PartitionFn = match strategy {
+        "section" => Box::new(|graph: &str| {
+            let path = graph.strip_prefix("<urn:geoff:content:")?;
+            let path = path.strip_suffix('>')?;
+            let first_slash = path.find('/')?;
+            Some(path[..first_slash].to_string())
+        }),
+        "type" => {
+            let mut type_map = std::collections::HashMap::new();
+            let query = "SELECT ?s ?type WHERE { GRAPH ?g { ?s a ?type } }";
+            if let Ok(results) = store.query_to_json(query)
+                && let Some(rows) = results.as_array()
+            {
+                for row in rows {
+                    if let (Some(s), Some(t)) = (
+                        row.get("s").and_then(|v| v.as_str()),
+                        row.get("type").and_then(|v| v.as_str()),
+                    ) {
+                        let type_name = t
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(t)
+                            .trim_start_matches('<')
+                            .trim_end_matches('>');
+                        type_map.insert(s.to_string(), type_name.to_string());
+                    }
+                }
+            }
+            Box::new(move |graph: &str| {
+                let subject = graph
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .unwrap_or(graph);
+                type_map.get(subject).cloned()
+            })
+        }
+        "date-year" => {
+            let mut date_map = std::collections::HashMap::new();
+            let query = "SELECT ?s ?date WHERE { GRAPH ?g { ?s <https://schema.org/datePublished> ?date } }";
+            if let Ok(results) = store.query_to_json(query)
+                && let Some(rows) = results.as_array()
+            {
+                for row in rows {
+                    if let (Some(s), Some(d)) = (
+                        row.get("s").and_then(|v| v.as_str()),
+                        row.get("date").and_then(|v| v.as_str()),
+                    ) && d.len() >= 4
+                    {
+                        date_map.insert(s.to_string(), d[..4].to_string());
+                    }
+                }
+            }
+            Box::new(move |graph: &str| {
+                let subject = graph
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .unwrap_or(graph);
+                date_map.get(subject).cloned()
+            })
+        }
+        "date-month" => {
+            let mut date_map = std::collections::HashMap::new();
+            let query = "SELECT ?s ?date WHERE { GRAPH ?g { ?s <https://schema.org/datePublished> ?date } }";
+            if let Ok(results) = store.query_to_json(query)
+                && let Some(rows) = results.as_array()
+            {
+                for row in rows {
+                    if let (Some(s), Some(d)) = (
+                        row.get("s").and_then(|v| v.as_str()),
+                        row.get("date").and_then(|v| v.as_str()),
+                    ) && d.len() >= 7
+                    {
+                        date_map.insert(s.to_string(), d[..7].to_string());
+                    }
+                }
+            }
+            Box::new(move |graph: &str| {
+                let subject = graph
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .unwrap_or(graph);
+                date_map.get(subject).cloned()
+            })
+        }
+        field_name => {
+            let mappings_path = output_dir.join("../ontology/mappings.toml");
+            let registry = geoff_ontology::mappings::MappingRegistry::load(camino::Utf8Path::new(
+                mappings_path.as_str(),
+            ))
+            .unwrap_or_default();
+            let predicate = registry
+                .resolve_property(field_name)
+                .unwrap_or(field_name)
+                .to_string();
+            let mut field_map = std::collections::HashMap::new();
+            let query = format!("SELECT ?s ?val WHERE {{ GRAPH ?g {{ ?s <{predicate}> ?val }} }}");
+            if let Ok(results) = store.query_to_json(&query)
+                && let Some(rows) = results.as_array()
+            {
+                for row in rows {
+                    if let (Some(s), Some(val)) = (
+                        row.get("s").and_then(|v| v.as_str()),
+                        row.get("val").and_then(|v| v.as_str()),
+                    ) {
+                        field_map.insert(s.to_string(), val.to_string());
+                    }
+                }
+            }
+            Box::new(move |graph: &str| {
+                let subject = graph
+                    .strip_prefix('<')
+                    .and_then(|s| s.strip_suffix('>'))
+                    .unwrap_or(graph);
+                field_map.get(subject).cloned()
+            })
+        }
+    };
+
+    let partitions = store.export_partitioned_ntriples(&*partition_fn)?;
+
+    // Write each partition file
+    let search_dir = output_dir.join("search");
+    let mut manifest = String::new();
+    let base = base_url.trim_end_matches('/');
+
+    for (key, nt) in &partitions {
+        if key.is_empty() {
+            continue; // Main bucket — written to search.nt below
+        }
+        let filename = format!("{key}.nt");
+        let file_path = search_dir.join(&filename);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&file_path, nt)?;
+        v.detail(&format!("Wrote search graph: search/{filename}"));
+
+        use std::fmt::Write;
+        writeln!(
+            manifest,
+            "<{base}/search/{filename}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:geoff:SearchGraph> ."
+        )?;
+        writeln!(
+            manifest,
+            "<{base}/search/{filename}> <urn:geoff:graphName> \"{key}\" ."
+        )?;
+        writeln!(
+            manifest,
+            "<{base}/search/{filename}> <urn:geoff:partitionStrategy> \"{strategy}\" ."
+        )?;
+    }
+
+    // Write search.nt = unpartitioned triples + manifest
+    let mut main_nt = partitions.get("").cloned().unwrap_or_default();
+    main_nt.push_str(&manifest);
+    let search_path = output_dir.join(&config.search.output);
+    std::fs::write(&search_path, &main_nt)?;
+    v.detail(&format!(
+        "Wrote search index: {} ({} partitions)",
+        config.search.output,
+        partitions.len().saturating_sub(1)
+    ));
+
+    Ok(())
 }
 
 async fn cmd_theme_preview(

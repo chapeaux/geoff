@@ -28,6 +28,11 @@ pub struct SearchConfig {
     pub enabled: bool,
     #[serde(default = "default_search_output")]
     pub output: String,
+    /// Partitioning strategy for faceted search graphs.
+    /// Options: "type", "section", "type+section", "date-year", "date-month",
+    /// or any frontmatter field name (resolved via the mapping registry).
+    #[serde(default)]
+    pub partition: Option<String>,
 }
 
 fn default_search_output() -> String {

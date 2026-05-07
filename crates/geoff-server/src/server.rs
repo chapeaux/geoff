@@ -279,10 +279,41 @@ pub async fn run(
                             map.insert(url_path, page.html);
                         }
 
-                        if state.config.search.enabled
-                            && let Ok(nt) = state.store.export_search_ntriples()
-                        {
-                            map.insert(format!("/{}", state.config.search.output), nt);
+                        if state.config.search.enabled {
+                            if state.config.search.partition.is_some()
+                                && let Ok(partitions) = state.store.export_partitioned_ntriples(
+                                    &|graph: &str| {
+                                        let path = graph
+                                            .strip_prefix("<urn:geoff:content:")?
+                                            .strip_suffix('>')?;
+                                        let first_slash = path.find('/')?;
+                                        Some(path[..first_slash].to_string())
+                                    },
+                                )
+                            {
+                                let mut manifest = String::new();
+                                for (key, nt) in &partitions {
+                                    if key.is_empty() {
+                                        continue;
+                                    }
+                                    map.insert(format!("/search/{key}.nt"), nt.clone());
+                                    use std::fmt::Write;
+                                    let _ = writeln!(manifest, "<{}/search/{key}.nt> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:geoff:SearchGraph> .", state.config.base_url.trim_end_matches('/'));
+                                    let _ = writeln!(manifest, "<{}/search/{key}.nt> <urn:geoff:graphName> \"{key}\" .", state.config.base_url.trim_end_matches('/'));
+                                }
+                                let mut main_nt =
+                                    partitions.get("").cloned().unwrap_or_default();
+                                main_nt.push_str(&manifest);
+                                map.insert(
+                                    format!("/{}", state.config.search.output),
+                                    main_nt,
+                                );
+                            } else if let Ok(nt) = state.store.export_search_ntriples() {
+                                map.insert(
+                                    format!("/{}", state.config.search.output),
+                                    nt,
+                                );
+                            }
                         }
 
                         Ok((renderer, map))
@@ -704,10 +735,51 @@ async fn build_with_hooks_async(
     }
 
     // Generate search index so it's available during dev
-    if config.search.enabled
-        && let Ok(nt) = store.export_search_ntriples()
-    {
-        map.insert(format!("/{}", config.search.output), nt);
+    if config.search.enabled {
+        if let Some(ref strategy) = config.search.partition {
+            if let Ok(partitions) =
+                store.export_partitioned_ntriples(&|graph: &str| match strategy.as_str() {
+                    "section" => {
+                        let path = graph
+                            .strip_prefix("<urn:geoff:content:")?
+                            .strip_suffix('>')?;
+                        let first_slash = path.find('/')?;
+                        Some(path[..first_slash].to_string())
+                    }
+                    _ => {
+                        let path = graph
+                            .strip_prefix("<urn:geoff:content:")?
+                            .strip_suffix('>')?;
+                        let first_slash = path.find('/')?;
+                        Some(path[..first_slash].to_string())
+                    }
+                })
+            {
+                let mut manifest = String::new();
+                for (key, nt) in &partitions {
+                    if key.is_empty() {
+                        continue;
+                    }
+                    map.insert(format!("/search/{key}.nt"), nt.clone());
+                    use std::fmt::Write;
+                    let _ = writeln!(
+                        manifest,
+                        "<{}/search/{key}.nt> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:geoff:SearchGraph> .",
+                        config.base_url.trim_end_matches('/')
+                    );
+                    let _ = writeln!(
+                        manifest,
+                        "<{}/search/{key}.nt> <urn:geoff:graphName> \"{key}\" .",
+                        config.base_url.trim_end_matches('/')
+                    );
+                }
+                let mut main_nt = partitions.get("").cloned().unwrap_or_default();
+                main_nt.push_str(&manifest);
+                map.insert(format!("/{}", config.search.output), main_nt);
+            }
+        } else if let Ok(nt) = store.export_search_ntriples() {
+            map.insert(format!("/{}", config.search.output), nt);
+        }
     }
 
     Ok(map)

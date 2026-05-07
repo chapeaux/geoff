@@ -158,6 +158,38 @@ impl ContentStore {
         Ok(out)
     }
 
+    /// Export triples grouped by a partition function.
+    ///
+    /// The `partition_fn` receives (graph_name) and returns an optional partition key.
+    /// Triples whose graph returns `None` go into the empty-key bucket (main search.nt).
+    /// The design tokens graph always partitions to `"design-tokens"`.
+    pub fn export_partitioned_ntriples(
+        &self,
+        partition_fn: &dyn Fn(&str) -> Option<String>,
+    ) -> std::result::Result<std::collections::HashMap<String, String>, Box<dyn std::error::Error>>
+    {
+        use std::collections::HashMap;
+        use std::fmt::Write;
+
+        let mut partitions: HashMap<String, String> = HashMap::new();
+        for quad in self.store.iter() {
+            let quad = quad?;
+            let graph_name = quad.graph_name.to_string();
+            let key = if graph_name.contains("urn:geoff:design-tokens") {
+                Some("design-tokens".to_string())
+            } else {
+                partition_fn(&graph_name)
+            };
+            let bucket = partitions.entry(key.unwrap_or_default()).or_default();
+            writeln!(
+                bucket,
+                "{} {} {} .",
+                quad.subject, quad.predicate, quad.object
+            )?;
+        }
+        Ok(partitions)
+    }
+
     /// Export all triples (flattened from all named graphs) as NTriples.
     ///
     /// This is useful for SHACL validation, which operates on a flat graph.
