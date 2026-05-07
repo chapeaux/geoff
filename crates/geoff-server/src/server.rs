@@ -472,6 +472,8 @@ async fn page_handler(
                     )
                         .into_response(),
                 }
+            } else if path.ends_with(".js") || path.ends_with(".wasm") || path.ends_with(".json") {
+                (StatusCode::NOT_FOUND, "Not Found").into_response()
             } else {
                 (
                     StatusCode::NOT_FOUND,
@@ -802,14 +804,22 @@ async fn build_with_hooks_async(
         }
     }
 
-    // Generate search page if enabled
-    if config.search.enabled && config.search.page {
-        let search_html = generate_dev_search_page(config);
-        map.insert("/search/".to_string(), search_html);
+    // Serve search components when search is enabled
+    if config.search.enabled {
+        map.insert(
+            "/geoff-search.js".to_string(),
+            include_str!("../components/geoff-search.js").to_string(),
+        );
         map.insert(
             "/geoff-faceted-search.js".to_string(),
             include_str!("../components/geoff-faceted-search.js").to_string(),
         );
+    }
+
+    // Generate search page if enabled
+    if config.search.enabled && config.search.page {
+        let search_html = generate_dev_search_page(config);
+        map.insert("/search/".to_string(), search_html);
     }
 
     // Generate MCP manifest for agent discovery

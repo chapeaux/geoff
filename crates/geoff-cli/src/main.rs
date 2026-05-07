@@ -639,6 +639,21 @@ async fn cmd_build(
         }
     }
 
+    // Copy search components to output when search is enabled (won't overwrite user's static/ versions)
+    if config.search.enabled {
+        let search_js = output_dir.join("geoff-search.js");
+        if !search_js.exists() {
+            std::fs::write(&search_js, include_str!("../components/geoff-search.js"))?;
+        }
+        let faceted_js = output_dir.join("geoff-faceted-search.js");
+        if !faceted_js.exists() {
+            std::fs::write(
+                &faceted_js,
+                include_str!("../components/geoff-faceted-search.js"),
+            )?;
+        }
+    }
+
     // Generate search page if enabled
     if config.search.enabled && config.search.page {
         let search_html = generate_search_page(&config);
@@ -647,12 +662,6 @@ async fn cmd_build(
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&search_page_path, &search_html)?;
-
-        // Copy faceted search component
-        let component_src = include_str!("../components/geoff-faceted-search.js");
-        let component_path = output_dir.join("geoff-faceted-search.js");
-        std::fs::write(&component_path, component_src)?;
-
         v.detail("Generated /search/ page");
     }
 
