@@ -8,6 +8,7 @@ homepage.workspace = true
 description = "Axum dev server with hot reload for Geoff"
 keywords = ["server", "dev-server", "hot-reload", "axum"]
 categories = ["web-programming::http-server"]
+include = ["src/**/*", "components/**/*", "Cargo.toml"]
 
 [dependencies]
 geoff-core = { version = "0.3.3", path = "../geoff-core" }

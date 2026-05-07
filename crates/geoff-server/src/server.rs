@@ -501,21 +501,21 @@ async fn theme_editor_component_handler(
 
     // Fall back to embedded components
     let embedded = match path.as_str() {
-        "geoff-token-field.js" => Some(include_str!("../../../components/geoff-token-field.js")),
-        "geoff-token-group.js" => Some(include_str!("../../../components/geoff-token-group.js")),
-        "geoff-token-editor.js" => Some(include_str!("../../../components/geoff-token-editor.js")),
+        "geoff-token-field.js" => Some(include_str!("../components/geoff-token-field.js")),
+        "geoff-token-group.js" => Some(include_str!("../components/geoff-token-group.js")),
+        "geoff-token-editor.js" => Some(include_str!("../components/geoff-token-editor.js")),
         "geoff-theme-preview.js" => {
-            Some(include_str!("../../../components/geoff-theme-preview.js"))
+            Some(include_str!("../components/geoff-theme-preview.js"))
         }
         "geoff-theme-editor-app.js" => Some(include_str!(
-            "../../../components/geoff-theme-editor-app.js"
+            "../components/geoff-theme-editor-app.js"
         )),
         "geoff-color-palette.js" => {
-            Some(include_str!("../../../components/geoff-color-palette.js"))
+            Some(include_str!("../components/geoff-color-palette.js"))
         }
-        "geoff-token-tree.js" => Some(include_str!("../../../components/geoff-token-tree.js")),
-        "geoff-create-theme.js" => Some(include_str!("../../../components/geoff-create-theme.js")),
-        "geoff-solid-auth.js" => Some(include_str!("../../../components/geoff-solid-auth.js")),
+        "geoff-token-tree.js" => Some(include_str!("../components/geoff-token-tree.js")),
+        "geoff-create-theme.js" => Some(include_str!("../components/geoff-create-theme.js")),
+        "geoff-solid-auth.js" => Some(include_str!("../components/geoff-solid-auth.js")),
         _ => None,
     };
 
