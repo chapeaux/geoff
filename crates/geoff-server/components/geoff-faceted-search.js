@@ -357,11 +357,9 @@ class GeoffFacetedSearch extends HTMLElement {
     // Update URL with facet state
     this._updateUrl();
 
-    // Re-run search
+    // Re-run search (always, even with empty query — facet change should update results)
     const input = this.querySelector('.gfs-input');
-    if (input.value.trim()) {
-      this._search(input.value);
-    }
+    this._search(input.value);
   }
 
   _updateUrl() {
@@ -378,7 +376,10 @@ class GeoffFacetedSearch extends HTMLElement {
 
   _search(query) {
     const results = this.querySelector('.gfs-results');
-    if (!query.trim()) {
+    const hasQuery = query && query.trim().length > 0;
+    const hasFacets = this._activeFacets.size > 0;
+
+    if (!hasQuery && !hasFacets) {
       results.innerHTML = '';
       this._setStatus('');
       return;
@@ -386,15 +387,28 @@ class GeoffFacetedSearch extends HTMLElement {
 
     if (!this._store) return;
 
-    const tokens = this._parseQuery(query.trim());
-    if (tokens.length === 0) {
-      results.innerHTML = '';
-      this._setStatus('');
-      return;
+    const limit = parseInt(this.getAttribute('limit') || '50', 10);
+    const filters = [];
+
+    // Text search filter
+    if (hasQuery) {
+      const tokens = this._parseQuery(query.trim());
+      if (tokens.length > 0) {
+        filters.push(this._buildFilter(tokens));
+      }
     }
 
-    const filter = this._buildFilter(tokens);
-    const limit = parseInt(this.getAttribute('limit') || '50', 10);
+    // Facet filter: restrict to pages whose URL starts with a selected section
+    if (hasFacets && this._activeFacets.size < this._facets.length) {
+      const sectionFilters = [...this._activeFacets].map(f =>
+        `STRSTARTS(STR(?url), "/${f}/") || STRSTARTS(STR(?url), "/${f}.")`
+      );
+      filters.push(`(${sectionFilters.join(' || ')})`);
+    }
+
+    const filterClause = filters.length > 0
+      ? `FILTER(${filters.join(' && ')})`
+      : '';
 
     const sparql = `
       SELECT ?s ?title ?url ?desc ?date WHERE {
@@ -402,7 +416,7 @@ class GeoffFacetedSearch extends HTMLElement {
         OPTIONAL { ?s <https://schema.org/url> ?url }
         OPTIONAL { ?s <https://schema.org/description> ?desc }
         OPTIONAL { ?s <https://schema.org/datePublished> ?date }
-        FILTER(${filter})
+        ${filterClause}
       }
       ORDER BY DESC(?date) ?title
       LIMIT ${limit}
@@ -419,7 +433,11 @@ class GeoffFacetedSearch extends HTMLElement {
 
       // Update URL params
       const url = new URL(location.href);
-      url.searchParams.set('q', query);
+      if (hasQuery) {
+        url.searchParams.set('q', query);
+      } else {
+        url.searchParams.delete('q');
+      }
       history.replaceState(null, '', url);
     } catch (e) {
       console.error('[geoff-faceted-search] query error:', e);
