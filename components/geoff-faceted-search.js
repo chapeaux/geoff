@@ -411,10 +411,10 @@ class GeoffFacetedSearch extends HTMLElement {
       }
     }
 
-    // Facet filter: restrict to pages whose URL starts with a selected section
+    // Facet filter: restrict to pages in selected sections (match on subject URI)
     if (hasFacets && this._activeFacets.size < this._facets.length) {
       const sectionFilters = [...this._activeFacets].map(f =>
-        `STRSTARTS(STR(?url), "/${f}/") || STRSTARTS(STR(?url), "/${f}.")`
+        `CONTAINS(STR(?s), "/${f}/")`
       );
       filters.push(`(${sectionFilters.join(' || ')})`);
     }
@@ -471,16 +471,15 @@ class GeoffFacetedSearch extends HTMLElement {
         continue;
       }
 
-      // Count matching results in this facet's section
+      // Count matching results by checking the subject URI contains the section path
       const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
-      const sectionFilter = `STRSTARTS(STR(?url), "/${f.name}/") || STRSTARTS(STR(?url), "/${f.name}.")`;
+      const sectionFilter = `CONTAINS(STR(?s), "/${f.name}/")`;
       const filters = [sectionFilter];
       if (textFilter) filters.push(textFilter);
 
       const sparql = `
         SELECT (COUNT(DISTINCT ?s) AS ?count) WHERE {
           ?s <https://schema.org/name> ?title .
-          OPTIONAL { ?s <https://schema.org/url> ?url }
           OPTIONAL { ?s <https://schema.org/description> ?desc }
           FILTER(${filters.join(' && ')})
         }
