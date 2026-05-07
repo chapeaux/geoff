@@ -735,7 +735,32 @@ fn insert_page_triples(p: &PageTriples<'_>) -> std::result::Result<(), Box<dyn s
             store.insert_triple_into(
                 page_uri.as_str(),
                 "urn:geoff:meta:parent",
-                &ObjectValue::Literal(parent),
+                &ObjectValue::Literal(parent.clone()),
+                graph_name,
+            )?;
+
+            // schema:isPartOf links to the parent page's graph URI for tree traversals.
+            // Derive the content path from the parent URL:
+            // "/foundations/color/" → "foundations/color/index.md"
+            // "/about.html" → "about.md"
+            // "/" → "index.md"
+            let parent_content_path = if parent == "/" {
+                "index.md".to_string()
+            } else {
+                let trimmed = parent.trim_start_matches('/');
+                if trimmed.ends_with('/') {
+                    format!("{trimmed}index.md")
+                } else if let Some(stem) = trimmed.strip_suffix(".html") {
+                    format!("{stem}.md")
+                } else {
+                    format!("{trimmed}index.md")
+                }
+            };
+            let parent_uri = PageUri::from_path(&parent_content_path);
+            store.insert_triple_into(
+                page_uri.as_str(),
+                "https://schema.org/isPartOf",
+                &ObjectValue::Iri(parent_uri.as_str().to_string()),
                 graph_name,
             )?;
         }
