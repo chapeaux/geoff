@@ -10,6 +10,11 @@ keywords = ["static-site", "rdf", "sparql", "semantic-web", "jamstack"]
 categories = ["web-programming", "template-engine", "command-line-utilities"]
 include = ["src/**/*", "components/**/*", "Cargo.toml"]
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/geoff-{ target }.tar.gz"
+bin-dir = "geoff"
+pkg-fmt = "tgz"
+
 [[bin]]
 name = "geoff"
 path = "src/main.rs"
