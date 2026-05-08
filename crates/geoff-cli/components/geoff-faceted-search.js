@@ -404,20 +404,21 @@ class GeoffFacetedSearch extends HTMLElement {
       if (tokens.length > 0) filters.push(this._buildFilter(tokens));
     }
 
-    // Build section filter
-    const sectionParts = [];
-    if (this._generalActive) {
-      const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
-      sectionParts.push(`(${generalFilter})`);
-    }
-    for (const f of this._activeFacets) {
-      sectionParts.push(`CONTAINS(STR(?s), "/${f}/")`);
-    }
-
-    if (sectionParts.length > 0) {
-      filters.push(`(${sectionParts.join(' || ')})`);
-    } else {
-      filters.push('false');
+    // Build section filter (skip entirely when no partitions exist)
+    if (this._allSections.length > 0) {
+      const sectionParts = [];
+      if (this._generalActive) {
+        const generalFilter = this._allSections.map(s => `!CONTAINS(STR(?s), "/${s}/")`).join(' && ');
+        sectionParts.push(`(${generalFilter})`);
+      }
+      for (const f of this._activeFacets) {
+        sectionParts.push(`CONTAINS(STR(?s), "/${f}/")`);
+      }
+      if (sectionParts.length > 0) {
+        filters.push(`(${sectionParts.join(' || ')})`);
+      } else if (!this._generalActive) {
+        filters.push('false');
+      }
     }
 
     const filterClause = filters.length > 0 ? `FILTER(${filters.join(' && ')})` : '';
@@ -447,6 +448,7 @@ class GeoffFacetedSearch extends HTMLElement {
 
   _updateCounts(query) {
     if (!this._store) return;
+    if (this._allSections.length === 0) return;
     const textFilter = query ? this._buildFilter(this._parseQuery(query)) : '';
 
     const generalEl = this.querySelector('[data-count="general"]');
