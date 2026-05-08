@@ -26,9 +26,10 @@ See `INITIAL_PLAN.md` for the full architecture plan, workspace structure, phase
 - **Critical CSS**: `static/critical.css` (global) and `static/critical-{template}.css` (per-template) are scanned during ingestion and inlined via the `critical_css` template variable. Populated per page based on template name.
 - **Design system tokens**: `[design] tokens = [...]` config loads external DTCG files. `geoff theme generate` creates `theme.json` with light-dark() aggregates. Token references resolve across file boundaries via `resolve_references_with_base()`. Inline `{ref}` resolution works in any string context (light-dark, color-mix, calc, etc.).
 - **Search partitioning**: `search.partition = "section"` splits the search index into per-section .nt files with a manifest in search.nt. `export_partitioned_ntriples()` in store.rs. Strategies: section, type, date-year, date-month, or any mapped field.
-- **Faceted search page**: Auto-generated `/search/` page with `<geoff-faceted-search>` component. Discovers partitions from manifest, loads graphs on demand. Theme-replaceable via `search.template`.
+- **Faceted search page**: Auto-generated `/search/` page with `<geoff-faceted-search>` component. Discovers partitions from manifest, loads graphs on demand. Select/Deselect All at top, General facet for root pages, per-facet counts, result badges, URL state persistence. Theme-replaceable via content file + template.
 - **MCP agent discovery**: `[mcp] enabled = true` generates `.well-known/mcp.json` manifest + `bin/geoff-sparql.wit` WIT interface. Manifest points to WASM engine and N-Triples data. Generated in CLI build (`generate_mcp_manifest`) and dev server (`generate_mcp_manifest_json`).
-- **geoff-sparql-wasm**: Standalone crate (excluded from workspace) wrapping Oxigraph for `wasm32-unknown-unknown`. Build with `wasm-pack`. Search components try local `/bin/geoff_sparql_wasm.js` first, fall back to esm.sh CDN.
+- **geoff-sparql-wasm**: Standalone crate (excluded from workspace) wrapping Oxigraph for `wasm32-unknown-unknown`. Build with `wasm-pack`. Search components use esm.sh CDN by default; opt-in local WASM via `wasm-src` attribute.
+- **`--full` rebuild**: Clears `dist/` and `.geoff/` cache before rebuilding. Ensures no stale output files survive.
 
 ## Team
 

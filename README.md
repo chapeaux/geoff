@@ -585,9 +585,19 @@ limit = 50                  # max results
 placeholder = "Search…"     # input placeholder
 ```
 
-The `<geoff-faceted-search>` component discovers available partitions from the manifest in `search.nt`, displays facet toggle buttons, and loads partition graphs on demand. Partition strategies: `"section"`, `"type"`, `"date-year"`, `"date-month"`, or any mapped frontmatter field name.
+The `<geoff-faceted-search>` component discovers available partitions from the manifest in `search.nt`, displays facet checkboxes, and loads partition graphs on demand. Each result shows a badge indicating which facet it came from. Partition strategies: `"section"`, `"type"`, `"date-year"`, `"date-month"`, or any mapped frontmatter field name.
 
-To replace the built-in search page with your theme's design, provide a `search.html` template that includes `<geoff-faceted-search>` and set `search.template = "search.html"` in config.
+Facet features:
+- **Select/Deselect all** at the top — toggles General + all section facets
+- **General** facet for root pages (toggleable, checked by default)
+- **On-demand loading** — unloaded facets show "(check to load)", data loads on first check
+- **Per-facet counts** — shows matching result count next to each loaded facet
+- **URL state** — `?facets=about,blog&general=false` for shareable filtered views
+- **Result badges** — each result labeled with its source facet (e.g., "blog", "general")
+
+To replace the built-in search page with your theme's design, create a `search.html` template and a `content/search.md` content file. The `<geoff-faceted-search>` component handles all search functionality.
+
+`geoff build --full` clears the output directory and cache before rebuilding, ensuring no stale files from previous builds.
 
 ## AI Agent Discovery
 

@@ -1,6 +1,6 @@
 [package]
 name = "geoff-sparql-wasm"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 license = "MIT"
 description = "WASM SPARQL engine for Geoff sites — query RDF graphs in browser and AI agents"
