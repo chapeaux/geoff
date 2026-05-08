@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit hook: sync Cargo.lock when Cargo.toml changes are staged
+
+if git diff --cached --name-only | grep -q 'Cargo.toml'; then
+    echo "Cargo.toml changed — syncing Cargo.lock..."
+    cargo check --workspace 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "cargo check failed — fix errors before committing"
+        exit 1
+    fi
+    git add Cargo.lock
+fi
