@@ -89,8 +89,8 @@ fn minify_css_files(output_dir: &Path) -> Result<usize, Box<dyn std::error::Erro
 // ---------------------------------------------------------------------------
 
 fn minify_js_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use swc_common::{sync::Lrc, FileName, Globals, SourceMap, GLOBALS};
-    use swc_ecma_codegen::{text_writer::JsWriter, Emitter};
+    use swc_common::{FileName, GLOBALS, Globals, SourceMap, sync::Lrc};
+    use swc_ecma_codegen::{Emitter, text_writer::JsWriter};
     use swc_ecma_parser::{EsSyntax, Syntax};
 
     let source = std::fs::read_to_string(path)?;
@@ -98,30 +98,33 @@ fn minify_js_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let fm = cm.new_source_file(Lrc::new(FileName::Real(path.to_path_buf())), source);
 
     let globals = Globals::new();
-    let minified_code = GLOBALS.set(&globals, || -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let mut errors = vec![];
-        let module = swc_ecma_parser::parse_file_as_module(
-            &fm,
-            Syntax::Es(EsSyntax::default()),
-            swc_ecma_ast::EsVersion::EsNext,
-            None,
-            &mut errors,
-        )
-        .map_err(|e| format!("parse error in {}: {e:?}", path.display()))?;
+    let minified_code = GLOBALS.set(
+        &globals,
+        || -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let mut errors = vec![];
+            let module = swc_ecma_parser::parse_file_as_module(
+                &fm,
+                Syntax::Es(EsSyntax::default()),
+                swc_ecma_ast::EsVersion::EsNext,
+                None,
+                &mut errors,
+            )
+            .map_err(|e| format!("parse error in {}: {e:?}", path.display()))?;
 
-        let mut buf = vec![];
-        {
-            let wr = JsWriter::new(cm.clone(), "\n", &mut buf, None);
-            let mut emitter = Emitter {
-                cfg: swc_ecma_codegen::Config::default().with_minify(true),
-                cm,
-                comments: None,
-                wr: Box::new(wr),
-            };
-            emitter.emit_module(&module)?;
-        }
-        Ok(buf)
-    })?;
+            let mut buf = vec![];
+            {
+                let wr = JsWriter::new(cm.clone(), "\n", &mut buf, None);
+                let mut emitter = Emitter {
+                    cfg: swc_ecma_codegen::Config::default().with_minify(true),
+                    cm,
+                    comments: None,
+                    wr: Box::new(wr),
+                };
+                emitter.emit_module(&module)?;
+            }
+            Ok(buf)
+        },
+    )?;
 
     std::fs::write(path, minified_code)?;
     Ok(())
