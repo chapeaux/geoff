@@ -85,95 +85,54 @@ fn minify_css_files(output_dir: &Path) -> Result<usize, Box<dyn std::error::Erro
 }
 
 // ---------------------------------------------------------------------------
-// JS minification (basic, no full parser)
+// JS minification (SWC)
 // ---------------------------------------------------------------------------
 
-fn minify_js_source(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let chars: Vec<char> = source.chars().collect();
-    let len = chars.len();
-    let mut i = 0;
+fn minify_js_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use swc_common::{sync::Lrc, FileName, Globals, SourceMap, GLOBALS};
+    use swc_ecma_codegen::{text_writer::JsWriter, Emitter};
+    use swc_ecma_parser::{EsSyntax, Syntax};
 
-    while i < len {
-        let c = chars[i];
+    let source = std::fs::read_to_string(path)?;
+    let cm: Lrc<SourceMap> = Default::default();
+    let fm = cm.new_source_file(Lrc::new(FileName::Real(path.to_path_buf())), source);
 
-        // Handle string literals — pass through without modification
-        if c == '"' || c == '\'' || c == '`' {
-            let quote = c;
-            out.push(c);
-            i += 1;
-            while i < len {
-                let sc = chars[i];
-                out.push(sc);
-                if sc == '\\' {
-                    // Escaped character: push the next char too
-                    i += 1;
-                    if i < len {
-                        out.push(chars[i]);
-                    }
-                } else if sc == quote {
-                    break;
-                }
-                i += 1;
-            }
-            i += 1;
-            continue;
+    let globals = Globals::new();
+    let minified_code = GLOBALS.set(&globals, || -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let mut errors = vec![];
+        let module = swc_ecma_parser::parse_file_as_module(
+            &fm,
+            Syntax::Es(EsSyntax::default()),
+            swc_ecma_ast::EsVersion::EsNext,
+            None,
+            &mut errors,
+        )
+        .map_err(|e| format!("parse error in {}: {e:?}", path.display()))?;
+
+        let mut buf = vec![];
+        {
+            let wr = JsWriter::new(cm.clone(), "\n", &mut buf, None);
+            let mut emitter = Emitter {
+                cfg: swc_ecma_codegen::Config::default().with_minify(true),
+                cm,
+                comments: None,
+                wr: Box::new(wr),
+            };
+            emitter.emit_module(&module)?;
         }
+        Ok(buf)
+    })?;
 
-        // Single-line comment
-        if c == '/' && i + 1 < len && chars[i + 1] == '/' {
-            // Skip to end of line
-            i += 2;
-            while i < len && chars[i] != '\n' {
-                i += 1;
-            }
-            // Replace the comment with a single space (safe separator)
-            out.push(' ');
-            continue;
-        }
-
-        // Multi-line comment
-        if c == '/' && i + 1 < len && chars[i + 1] == '*' {
-            i += 2;
-            while i + 1 < len && !(chars[i] == '*' && chars[i + 1] == '/') {
-                i += 1;
-            }
-            i += 2; // skip */
-            out.push(' ');
-            continue;
-        }
-
-        out.push(c);
-        i += 1;
-    }
-
-    // Collapse whitespace: multiple spaces/newlines/tabs into a single space
-    collapse_whitespace(&out)
-}
-
-fn collapse_whitespace(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut prev_ws = false;
-    for c in s.chars() {
-        if c.is_ascii_whitespace() {
-            if !prev_ws {
-                out.push(' ');
-            }
-            prev_ws = true;
-        } else {
-            out.push(c);
-            prev_ws = false;
-        }
-    }
-    out.trim().to_string()
+    std::fs::write(path, minified_code)?;
+    Ok(())
 }
 
 fn minify_js_files(output_dir: &Path) -> Result<usize, Box<dyn std::error::Error>> {
     let files = collect_files_by_extension(output_dir, "js");
     for file in &files {
-        let source = std::fs::read_to_string(file)?;
-        let minified = minify_js_source(&source);
-        std::fs::write(file, minified)?;
+        if let Err(e) = minify_js_file(file) {
+            eprintln!("warning: JS minify failed for {}: {e}", file.display());
+        }
     }
     Ok(files.len())
 }
@@ -308,39 +267,6 @@ fn convert_single_image(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn js_minify_strips_single_line_comments() {
-        let input = "var x = 1; // a comment\nvar y = 2;";
-        let result = minify_js_source(input);
-        assert!(!result.contains("// a comment"));
-        assert!(result.contains("var x = 1;"));
-        assert!(result.contains("var y = 2;"));
-    }
-
-    #[test]
-    fn js_minify_strips_multiline_comments() {
-        let input = "var x = 1; /* multi\nline\ncomment */ var y = 2;";
-        let result = minify_js_source(input);
-        assert!(!result.contains("multi"));
-        assert!(result.contains("var x = 1;"));
-        assert!(result.contains("var y = 2;"));
-    }
-
-    #[test]
-    fn js_minify_preserves_strings() {
-        let input = r#"var x = "hello // world"; var y = 1;"#;
-        let result = minify_js_source(input);
-        assert!(result.contains("hello // world"));
-    }
-
-    #[test]
-    fn js_minify_collapses_whitespace() {
-        let input = "var   x  =   1;\n\n\nvar   y = 2;";
-        let result = minify_js_source(input);
-        assert!(!result.contains("  "));
-        assert!(!result.contains('\n'));
-    }
 
     #[test]
     fn content_hash_deterministic() {
