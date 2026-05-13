@@ -30,6 +30,7 @@ See `INITIAL_PLAN.md` for the full architecture plan, workspace structure, phase
 - **MCP agent discovery**: `[mcp] enabled = true` generates `.well-known/mcp.json` manifest + `bin/geoff-sparql.wit` WIT interface. Manifest points to WASM engine and N-Triples data. Generated in CLI build (`generate_mcp_manifest`) and dev server (`generate_mcp_manifest_json`).
 - **geoff-sparql-wasm**: Standalone crate (excluded from workspace) wrapping Oxigraph for `wasm32-unknown-unknown`. Build with `wasm-pack`. Search components use esm.sh CDN by default; opt-in local WASM via `wasm-src` attribute.
 - **`--full` rebuild**: Clears `dist/` and `.geoff/` cache before rebuilding. Ensures no stale output files survive.
+- **Component delivery**: Built-in `geoff-search.js` and `geoff-faceted-search.js` are always written to `dist/` during build (overwriting stale `static/` copies). Sites should NOT keep copies in `static/` — geoff provides them. Custom components should use different filenames.
 
 ## Team
 

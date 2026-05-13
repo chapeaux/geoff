@@ -1,6 +1,6 @@
 [package]
 name = "geoff-server"
-version = "0.5.0"
+version = "0.5.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -11,14 +11,14 @@ categories = ["web-programming::http-server"]
 include = ["src/**/*", "components/**/*", "Cargo.toml"]
 
 [dependencies]
-geoff-core = { version = "0.5.0", path = "../geoff-core" }
-geoff-graph = { version = "0.5.0", path = "../geoff-graph" }
-geoff-content = { version = "0.5.0", path = "../geoff-content" }
-geoff-render = { version = "0.5.0", path = "../geoff-render" }
-geoff-ontology = { version = "0.5.0", path = "../geoff-ontology" }
-geoff-theme = { version = "0.5.0", path = "../geoff-theme" }
-geoff-plugin = { version = "0.5.0", path = "../geoff-plugin" }
-geoff-deno = { version = "0.5.0", path = "../geoff-deno" }
+geoff-core = { version = "0.5.1", path = "../geoff-core" }
+geoff-graph = { version = "0.5.1", path = "../geoff-graph" }
+geoff-content = { version = "0.5.1", path = "../geoff-content" }
+geoff-render = { version = "0.5.1", path = "../geoff-render" }
+geoff-ontology = { version = "0.5.1", path = "../geoff-ontology" }
+geoff-theme = { version = "0.5.1", path = "../geoff-theme" }
+geoff-plugin = { version = "0.5.1", path = "../geoff-plugin" }
+geoff-deno = { version = "0.5.1", path = "../geoff-deno" }
 axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 notify = "8"

@@ -599,6 +599,8 @@ To replace the built-in search page with your theme's design, create a `search.h
 
 `geoff build --full` clears the output directory and cache before rebuilding, ensuring no stale files from previous builds.
 
+**Note:** `geoff-search.js` and `geoff-faceted-search.js` are shipped with geoff and always written to `dist/` during build. Do not keep copies in your `static/` directory — they will be overwritten. If you need a custom search component, use a different filename.
+
 ## AI Agent Discovery
 
 Geoff sites can expose their RDF knowledge graph to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Enable it in `geoff.toml`:
