@@ -650,19 +650,16 @@ async fn cmd_build(
         }
     }
 
-    // Copy search components to output when search is enabled (won't overwrite user's static/ versions)
+    // Write built-in search components (always overwrite to prevent stale copies)
     if config.search.enabled {
-        let search_js = output_dir.join("geoff-search.js");
-        if !search_js.exists() {
-            std::fs::write(&search_js, include_str!("../components/geoff-search.js"))?;
-        }
-        let faceted_js = output_dir.join("geoff-faceted-search.js");
-        if !faceted_js.exists() {
-            std::fs::write(
-                &faceted_js,
-                include_str!("../components/geoff-faceted-search.js"),
-            )?;
-        }
+        std::fs::write(
+            output_dir.join("geoff-search.js"),
+            include_str!("../components/geoff-search.js"),
+        )?;
+        std::fs::write(
+            output_dir.join("geoff-faceted-search.js"),
+            include_str!("../components/geoff-faceted-search.js"),
+        )?;
     }
 
     // Generate search page if enabled
